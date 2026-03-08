@@ -3,7 +3,6 @@
 <head>
 <meta charset="UTF-8">
 <title>BOM Flow</title>
-<script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
 *{margin:0;padding:0;box-sizing:border-box;}
@@ -253,12 +252,16 @@ select.fi{cursor:pointer;}
 /* ── AUTH GATE ── */
 #auth-gate{position:fixed;inset:0;background:#0e0f16;display:flex;align-items:center;justify-content:center;z-index:9999;}
 #auth-gate.hidden{display:none;}
-.ag-box{text-align:center;}
+.ag-box{text-align:center;width:300px;}
 .ag-logo{font-family:'IBM Plex Mono',monospace;font-size:26px;font-weight:600;color:#3d9eff;letter-spacing:2px;margin-bottom:6px;}
 .ag-logo span{color:#6b6f8a;font-weight:400;}
 .ag-sub{font-size:11px;color:#6b6f8a;margin-bottom:28px;letter-spacing:.5px;}
-.ag-btn{padding:9px 28px;background:#3d9eff;border:none;border-radius:6px;color:#fff;font-family:'IBM Plex Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;letter-spacing:.3px;}
+.ag-input{width:100%;padding:9px 14px;background:#1a1b26;border:1px solid #2a2d3e;border-radius:6px;color:#d4d6e8;font-family:'IBM Plex Mono',monospace;font-size:13px;text-align:center;outline:none;margin-bottom:12px;box-sizing:border-box;}
+.ag-input:focus{border-color:#3d9eff;}
+.ag-btn{width:100%;padding:9px 0;background:#3d9eff;border:none;border-radius:6px;color:#fff;font-family:'IBM Plex Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;}
 .ag-btn:hover{background:#6ab4ff;}
+.ag-btn:disabled{opacity:.5;cursor:not-allowed;}
+.ag-err{font-size:11px;color:#ff6b8a;margin-top:8px;display:none;font-family:'IBM Plex Mono',monospace;}
 </style>
 </head>
 <body>
@@ -267,7 +270,9 @@ select.fi{cursor:pointer;}
   <div class="ag-box">
     <div class="ag-logo">BOM<span>flow</span></div>
     <div class="ag-sub">Visual BOM Editor</div>
-    <button class="ag-btn" id="signin-btn">Sign In</button>
+    <input class="ag-input" type="password" id="ag-pw" placeholder="Password" />
+    <button class="ag-btn" id="ag-btn">Sign In</button>
+    <div class="ag-err" id="ag-err">Incorrect password</div>
   </div>
 </div>
 
@@ -2255,28 +2260,64 @@ init();
 </script>
 
 <script>
-// ── NETLIFY IDENTITY AUTH GATE ──
-window.addEventListener('load', function(){
-  const gate = document.getElementById('auth-gate');
-  const btn  = document.getElementById('signin-btn');
+// ── AUTH GATE ──
+(function(){
+  const TOKEN_KEY = 'bf_token';
+  const gate  = document.getElementById('auth-gate');
+  const input = document.getElementById('ag-pw');
+  const btn   = document.getElementById('ag-btn');
+  const err   = document.getElementById('ag-err');
 
-  function unlock(){
-    gate.classList.add('hidden');
+  function unlock(){ gate.classList.add('hidden'); }
+  function showErr(){ err.style.display = 'block'; input.value = ''; input.focus(); }
+
+  async function checkExistingToken(){
+    const token = localStorage.getItem(TOKEN_KEY);
+    if(!token) return;
+    try {
+      const res = await fetch('/.netlify/functions/verify', {
+        method: 'POST',
+        body: JSON.stringify({ token })
+      });
+      const data = await res.json();
+      if(data.valid) unlock();
+      else localStorage.removeItem(TOKEN_KEY);
+    } catch(e) {
+      // Network error — fail open so dev mode still works locally
+      console.warn('Auth check failed', e);
+    }
   }
 
-  netlifyIdentity.on('init', function(user){
-    if(user) unlock();
-  });
+  async function attempt(){
+    const password = input.value;
+    if(!password) return;
+    btn.disabled = true;
+    btn.textContent = '...';
+    err.style.display = 'none';
+    try {
+      const res = await fetch('/.netlify/functions/auth', {
+        method: 'POST',
+        body: JSON.stringify({ password })
+      });
+      const data = await res.json();
+      if(res.ok && data.token){
+        localStorage.setItem(TOKEN_KEY, data.token);
+        unlock();
+      } else {
+        showErr();
+      }
+    } catch(e) {
+      showErr();
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Sign In';
+    }
+  }
 
-  netlifyIdentity.on('login', function(user){
-    netlifyIdentity.close();
-    unlock();
-  });
-
-  btn.addEventListener('click', function(){ netlifyIdentity.open('login'); });
-
-  netlifyIdentity.init();
-});
+  btn.addEventListener('click', attempt);
+  input.addEventListener('keydown', e => { if(e.key === 'Enter') attempt(); });
+  checkExistingToken();
+})();
 </script>
 </body>
 </html>
