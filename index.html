@@ -1,0 +1,2238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>BOM Flow</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+*{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --bg:#12131a;--panel:#1a1b26;--panel2:#1e2030;
+  --border:#2a2d3e;--border2:#353857;
+  --text:#d4d6e8;--dim:#6b6f8a;--muted:#3a3d55;
+  --cf:#3d9eff;--ca:#f7c948;--cs:#e07b39;--cr:#5ec47a;
+  --cp:#b87fff;--cfa:#ff6b8a;--ck:#4ecdc4;--co:#8899aa;
+  --wire:#3d9eff;
+}
+body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--text);overflow:hidden;height:100vh;width:100vw;user-select:none;}
+
+/* ── TOPBAR ── */
+#topbar{position:fixed;inset:0 0 auto 0;height:46px;background:rgba(18,19,26,.97);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 14px;gap:6px;z-index:1000;backdrop-filter:blur(10px);isolation:isolate;}
+.logo{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;color:var(--cf);letter-spacing:1.5px;margin-right:10px;}
+.logo span{color:var(--dim);font-weight:400;}
+.tb{display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:5px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:11px;font-family:'IBM Plex Sans',sans-serif;font-weight:500;cursor:pointer;transition:all .12s;white-space:nowrap;}
+.tb:hover{border-color:var(--cf);color:var(--cf);}
+.tb.pri{background:var(--cf);border-color:var(--cf);color:#fff;}
+.tb.pri:hover{background:#6ab4ff;}
+.sep{width:1px;height:22px;background:var(--border);margin:0 2px;}
+.tr{margin-left:auto;display:flex;align-items:center;gap:6px;}
+#zdsp{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--dim);background:var(--panel2);border:1px solid var(--border);border-radius:4px;padding:3px 7px;min-width:44px;text-align:center;}
+
+/* ── CANVAS ── */
+#wrap{position:fixed;top:46px;inset-inline:0;bottom:22px;overflow:hidden;background:#0e0f16;cursor:default;--dot-opacity:1;}
+#wrap.panning{cursor:grabbing!important;}
+#wrap::before{content:'';position:absolute;inset:0;background-image:radial-gradient(circle,#1e1f2e 1px,transparent 1px);background-size:28px 28px;pointer-events:none;opacity:var(--dot-opacity);transition:opacity .2s;}
+
+/* The world layer — pan+zoom applied here */
+#world{position:absolute;top:0;left:0;transform-origin:0 0;}
+
+/* SVG layers inside world */
+#svg-wires{position:absolute;top:0;left:0;overflow:visible;pointer-events:none;}
+#svg-hit{position:absolute;top:0;left:0;overflow:visible;pointer-events:all;fill:none;}/* transparent hit paths for wire clicks */
+#svg-pills{position:absolute;top:0;left:0;overflow:visible;pointer-events:none;}
+
+/* ── NODE ── */
+.node{position:absolute;width:236px;border-radius:8px;border:1px solid var(--border);background:var(--panel);box-shadow:0 4px 20px rgba(0,0,0,.5);cursor:grab;}
+.node:active{cursor:grabbing;}
+.node.sel{border-color:rgba(61,158,255,.6);box-shadow:0 0 0 2px rgba(61,158,255,.18),0 4px 20px rgba(0,0,0,.5);}
+.node.dim{opacity:.28;}
+.node *{user-select:none;}
+/* left color bar */
+.nbar{position:absolute;left:0;top:0;bottom:0;width:3px;border-radius:8px 0 0 8px;}
+/* header */
+.nhdr{padding:8px 10px 8px 14px;display:flex;align-items:flex-start;gap:6px;cursor:grab;}
+.ninfo{flex:1;min-width:0;}
+.npn{font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--dim);margin-bottom:1px;}
+.nname{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.nbadge{display:inline-flex;align-items:center;gap:4px;margin-top:3px;padding:1px 6px;border-radius:3px;font-size:9px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;}
+.nbtns{display:flex;gap:2px;flex-shrink:0;}
+.nbtn{width:20px;height:20px;border-radius:4px;border:none;background:transparent;color:var(--dim);font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .1s;}
+.nbtn:hover{background:var(--panel2);color:var(--text);}
+.nbtn.x:hover{background:rgba(255,107,107,.2);color:#ff6b6b;}
+/* body */
+.nbody{border-top:1px solid var(--border);padding:7px 10px 4px 14px;}
+.node.collapsed .nbody{display:none;}
+.ncsm{display:none;padding:2px 14px 7px;font-size:9px;font-family:'IBM Plex Mono',monospace;color:var(--dim);}
+.node.collapsed .ncsm{display:block;}
+.nmeta{display:flex;gap:8px;margin-bottom:5px;flex-wrap:wrap;}
+.chip{font-size:10px;font-family:'IBM Plex Mono',monospace;display:flex;gap:2px;align-items:center;}
+.chip-par{color:var(--dim);font-size:9px;margin-left:2px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.chip .l{color:var(--dim);}.chip .v{font-weight:600;}
+.ndesc{font-size:10px;color:var(--dim);line-height:1.35;margin-bottom:4px;}
+/* port strip — sits at bottom of body, extends to node edges */
+.nports{display:flex;justify-content:space-between;align-items:center;margin-top:4px;height:22px;position:relative;}
+.plbl{font-size:9px;font-family:'IBM Plex Mono',monospace;color:var(--muted);padding:0 8px;}
+/* Port dots — absolutely anchored to node left/right edge */
+.pdot{
+  position:absolute;top:50%;
+  width:13px;height:13px;border-radius:50%;border:2.5px solid;
+  cursor:crosshair;
+  transform:translateY(-50%);
+  transition:transform .12s,box-shadow .12s;
+  z-index:2;
+}
+.pdot.L{left:-7px;border-color:var(--cr);background:var(--panel);}   /* children — LEFT */
+.pdot.R{right:-7px;border-color:var(--cfa);background:var(--panel);}  /* parent  — RIGHT */
+.pdot:hover{transform:translateY(-50%) scale(1.45);}
+.pdot.L:hover,.pdot.L.act{background:var(--cr);box-shadow:0 0 8px var(--cr);}
+.pdot.R:hover,.pdot.R.act{background:var(--cfa);box-shadow:0 0 8px var(--cfa);}
+.pdot.L.on{background:var(--cr);}
+.pdot.R.on{background:var(--cfa);}
+
+/* ── WIRE DELETE TOOLTIP ── */
+#wire-del-tip{
+  position:absolute;display:none;
+  background:#ff6b6b;color:#fff;
+  font-size:10px;font-family:'IBM Plex Mono',monospace;
+  padding:3px 8px;border-radius:4px;
+  pointer-events:none;z-index:200;
+  transform:translate(-50%,-130%);
+  white-space:nowrap;
+}
+#node-tip{
+  position:fixed;display:none;
+  background:#1a1b2e;color:var(--text);
+  border:1px solid var(--border2);
+  border-radius:6px;padding:6px 10px;
+  pointer-events:none;z-index:9999;
+  max-width:260px;
+  box-shadow:0 4px 16px rgba(0,0,0,.5);
+}
+#node-tip .nt-pn{font-size:10px;font-family:'IBM Plex Mono',monospace;color:#3d9eff;margin-bottom:2px;}
+#node-tip .nt-name{font-size:12px;color:var(--text);line-height:1.3;}
+
+/* ── INSPECTOR ── */
+#ins{position:fixed;right:0;top:46px;bottom:22px;width:280px;background:var(--panel);border-left:1px solid var(--border);display:none;flex-direction:column;z-index:50;}
+#ins.open{display:flex;}
+.ins-h{padding:12px 16px 10px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.ins-h h3{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--dim);}
+.ins-hx{background:none;border:none;color:var(--dim);cursor:pointer;font-size:16px;padding:2px 6px;border-radius:4px;}
+.ins-hx:hover{background:var(--panel2);color:var(--text);}
+.ins-b{flex:1;overflow-y:auto;padding:14px 16px;}
+.ins-b::-webkit-scrollbar{width:4px;}
+.ins-b::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+.fg{margin-bottom:13px;}
+.fl{font-size:10px;font-weight:600;color:var(--dim);letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px;}
+.fi{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:12px;padding:6px 9px;outline:none;transition:border-color .12s;}
+.fi:focus{border-color:var(--cf);}
+.fi[type=number]{-moz-appearance:textfield;}
+textarea.fi{resize:vertical;min-height:50px;line-height:1.4;}
+select.fi{cursor:pointer;}
+.tgrid{display:grid;grid-template-columns:1fr 1fr;gap:5px;}
+.topt{padding:5px 8px;border-radius:5px;border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:6px;font-size:11px;transition:all .12s;}
+.topt:hover{border-color:var(--border2);}
+.topt.sel{border-color:currentColor;}
+.tdot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.ins-f{padding:10px 16px;border-top:1px solid var(--border);display:flex;gap:8px;}
+.bsave{flex:1;padding:7px;border-radius:5px;border:none;background:var(--cf);color:#fff;font-family:'IBM Plex Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer;}
+.bsave:hover{background:#6ab4ff;}
+.bdel{padding:7px 11px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--dim);font-size:12px;cursor:pointer;transition:all .12s;}
+.bdel:hover{background:rgba(255,107,107,.15);border-color:#ff6b8a;color:#ff6b8a;}
+
+/* ── BOM PANEL ── */
+#bomp{position:fixed;inset-inline:0;bottom:22px;background:var(--panel);border-top:1px solid var(--border);transition:transform .25s;transform:translateY(100%);z-index:60;}
+#bomp.open{transform:translateY(0);}
+.bh{padding:6px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);}
+.bh h3{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--dim);cursor:pointer;}
+.bcnt{font-size:10px;font-family:'IBM Plex Mono',monospace;background:var(--panel2);padding:1px 7px;border-radius:10px;color:var(--cf);}
+.bha{margin-left:auto;display:flex;gap:6px;}
+.btw{max-height:220px;overflow-y:auto;padding:0 16px 10px;}
+.btw::-webkit-scrollbar{width:4px;}
+.btw::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+#btbl{width:100%;border-collapse:collapse;font-size:11px;}
+#btbl th{text-align:left;padding:5px 8px;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;color:var(--dim);border-bottom:1px solid var(--border);font-family:'IBM Plex Mono',monospace;position:sticky;top:0;background:var(--panel);}
+#btbl td{padding:4px 8px;border-bottom:1px solid rgba(255,255,255,.03);vertical-align:middle;}
+#btbl tr:hover td{background:var(--panel2);}
+.bbadge{padding:1px 5px;border-radius:3px;font-size:9px;font-weight:600;}
+
+/* ── STATUS ── */
+#sbar{position:fixed;inset:auto 0 0 0;height:22px;background:rgba(12,13,20,.95);border-top:1px solid var(--border);display:flex;align-items:center;padding:0 12px;gap:14px;z-index:1000;font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--muted);}
+#sbar .hi{color:var(--cf);}
+
+/* ── MODAL ── */
+#mbg{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:200;}
+#mbg.open{display:flex;}
+#del-bg{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:400;}
+#del-bg.open{display:flex;}
+#del-box{background:var(--panel);border:1px solid var(--border2);border-radius:10px;width:420px;max-width:94vw;max-height:80vh;display:flex;flex-direction:column;overflow:hidden;}
+#del-body{padding:16px 20px;overflow-y:auto;font-size:13px;line-height:1.5;}
+#del-body p{margin:0 0 12px;color:var(--muted);}
+#del-body .del-nd{font-weight:600;color:var(--text);}
+#del-body .del-section{margin-top:12px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--dim);margin-bottom:6px;}
+#del-body .del-parent-row{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);}
+#del-body .del-parent-row:last-child{border-bottom:none;}
+#del-body .del-parent-row label{cursor:pointer;font-size:12px;flex:1;}
+#del-body .del-parent-row .del-pn{font-family:'IBM Plex Mono',monospace;font-size:10px;color:#3d9eff;margin-left:4px;}
+#del-abandon{background:rgba(255,107,107,.15);border-color:#ff6b8a;color:#ff6b8a;}
+#del-abandon:hover{background:rgba(255,107,107,.28);}
+#mdl{background:var(--panel);border:1px solid var(--border2);border-radius:10px;width:420px;max-height:86vh;overflow-y:auto;box-shadow:0 32px 80px rgba(0,0,0,.7);}
+#mdl::-webkit-scrollbar{width:4px;}
+#mdl::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+.mh{padding:16px 20px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.mh h2{font-size:14px;font-weight:600;}
+.mx{background:none;border:none;color:var(--dim);cursor:pointer;font-size:18px;}
+.mb{padding:16px 20px;}
+.mf{padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;}
+.bcan{padding:6px 14px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--dim);font-family:'IBM Plex Sans',sans-serif;font-size:12px;cursor:pointer;}
+.bcan:hover{color:var(--text);}
+.bok{padding:6px 18px;border-radius:5px;border:none;background:var(--cf);color:#fff;font-family:'IBM Plex Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer;}
+.bok:hover{background:#6ab4ff;}
+
+/* ── CSV IMPORT MODAL ── */
+#csv-modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(8px);display:none;align-items:center;justify-content:center;z-index:500;}
+#csv-modal-bg.open{display:flex;}
+.lm-box{background:var(--panel);border:1px solid var(--border2);border-radius:12px;width:480px;box-shadow:0 40px 100px rgba(0,0,0,.8);}
+.lm-h{padding:20px 24px 16px;border-bottom:1px solid var(--border);}
+.lm-h h2{font-size:15px;font-weight:600;margin-bottom:4px;}
+.lm-h p{font-size:11px;color:var(--dim);line-height:1.5;}
+.lm-b{padding:20px 24px;}
+.drop-zone{border:2px dashed var(--border2);border-radius:8px;padding:28px 20px;text-align:center;cursor:pointer;transition:all .15s;position:relative;}
+.drop-zone:hover,.drop-zone.drag-over{border-color:var(--cf);background:rgba(61,158,255,.05);}
+.drop-zone.loaded{border-color:var(--cr);background:rgba(94,196,122,.07);}
+.drop-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
+.dz-icon{font-size:26px;margin-bottom:8px;}
+.dz-label{font-size:12px;font-weight:600;margin-bottom:4px;}
+.dz-sub{font-size:10px;color:var(--dim);font-family:'IBM Plex Mono',monospace;}
+.dz-ok{font-size:11px;color:var(--cr);font-family:'IBM Plex Mono',monospace;margin-top:6px;font-weight:600;}
+.lm-f{padding:14px 24px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;align-items:center;}
+.lm-skip{font-size:11px;color:var(--dim);cursor:pointer;text-decoration:underline;text-underline-offset:2px;margin-right:auto;}
+.lm-skip:hover{color:var(--text);}
+
+/* ── FOCUS MODE ── */
+.node.focus-active{z-index:45!important;box-shadow:0 0 0 2px rgba(247,201,72,.8),0 0 24px rgba(247,201,72,.3),0 4px 20px rgba(0,0,0,.5)!important;opacity:1!important;transition:opacity .25s,box-shadow .25s;}
+.node.focus-dim{opacity:.08!important;transition:opacity .25s;}
+#focus-bar{position:fixed;top:56px;left:50%;transform:translateX(-50%);display:none;align-items:center;gap:6px;z-index:200;}
+#focus-bar.visible{display:flex;}
+#focus-exit,#focus-open-editor{background:rgba(26,27,38,.92);border:1px solid rgba(247,201,72,.5);color:#f7c948;font-size:11px;font-family:'IBM Plex Mono',monospace;padding:5px 14px;border-radius:20px;cursor:pointer;backdrop-filter:blur(6px);white-space:nowrap;user-select:none;}
+#focus-exit:hover{background:rgba(247,201,72,.15);}
+#focus-open-editor{border-color:rgba(61,158,255,.5);color:#3d9eff;}
+#focus-open-editor:hover{background:rgba(61,158,255,.15);}
+
+/* ── FOCUS SEARCH ── */
+#focus-search-wrap{position:relative;display:flex;align-items:center;}
+#focus-search{background:var(--panel2);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:11px;padding:4px 28px 4px 9px;width:180px;outline:none;transition:border-color .12s;cursor:pointer;}
+#focus-search:focus{border-color:var(--cf);width:220px;}
+#focus-search::placeholder{color:var(--dim);}
+#focus-search-icon{position:absolute;right:8px;font-size:11px;color:var(--dim);pointer-events:none;}
+#focus-dropdown{position:absolute;top:calc(100% + 4px);left:0;background:var(--panel);border:1px solid var(--border2);border-radius:7px;box-shadow:0 12px 40px rgba(0,0,0,.6);z-index:400;display:none;min-width:220px;max-height:260px;overflow-y:auto;}
+#focus-dropdown.open{display:block;}
+#focus-dropdown::-webkit-scrollbar{width:4px;}
+#focus-dropdown::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+.fd-item{padding:7px 12px;font-size:11px;cursor:pointer;display:flex;flex-direction:column;gap:1px;border-radius:4px;margin:2px;}
+.fd-item:hover{background:var(--panel2);}
+.fd-item .fd-name{color:var(--text);}
+.fd-item .fd-pn{font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--dim);}
+.fd-empty{padding:10px 12px;font-size:11px;color:var(--dim);text-align:center;}
+.fd-section-label{padding:4px 12px 2px;font-size:9px;font-family:'IBM Plex Mono',monospace;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;}
+.fd-divider{height:1px;background:var(--border);margin:4px 8px;}
+
+/* ── CTX ── */
+#ctx{position:fixed;background:var(--panel);border:1px solid var(--border2);border-radius:7px;padding:4px;min-width:165px;box-shadow:0 12px 40px rgba(0,0,0,.6);z-index:300;display:none;}
+.ci{padding:6px 12px;font-size:11px;border-radius:4px;cursor:pointer;display:flex;align-items:center;gap:7px;transition:background .1s;}
+.ci:hover{background:var(--panel2);}
+.ci.red:hover{background:rgba(255,107,107,.15);color:#ff6b8a;}
+.chr{height:1px;background:var(--border);margin:3px 0;}
+
+/* ── EMPTY ── */
+#empty{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;}
+#empty .ei{font-size:50px;opacity:.05;}
+#empty p{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.7;}
+#empty code{font-family:'IBM Plex Mono',monospace;font-size:10px;background:var(--panel);padding:1px 5px;border-radius:3px;color:var(--cf);}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div class="logo">BOM<span>flow</span></div>
+  <div class="sep"></div>
+  <button class="tb pri" onclick="openModal()">＋ Add Component</button>
+  <button class="tb" onclick="openCSVModal()">⬆ Import CSV</button>
+  <div class="sep"></div>
+  <button class="tb" onclick="collapseAll()">⊟ Collapse All</button>
+  <button class="tb" onclick="expandAll()">⊞ Expand All</button>
+  <div class="sep"></div>
+  <button class="tb" onclick="toggleBOM()">📋 BOM Table</button>
+  <button class="tb" onclick="fitView()">⊡ Fit View</button>
+  <button class="tb" onclick="setZoom(1)">1:1</button>
+  <div class="sep"></div>
+  <button class="tb" id="sos-btn" onclick="openSOSModal()" style="color:#f7c948;border-color:#f7c94833">⬡ SOS Connect</button>
+  <div class="sep"></div>
+  <button class="tb" onclick="saveHTML()" style="color:#5ec47a;border-color:#5ec47a22">💾 Save</button>
+  <button class="tb" onclick="clearAll()" style="color:var(--dim)">↺ Reset</button>
+  <div class="sep"></div>
+  <div id="focus-search-wrap">
+    <input id="focus-search" type="text" placeholder="🔍 Focus assembly…" oninput="filterFocusDropdown()" onfocus="openFocusDropdown()" onblur="setTimeout(closeFocusDropdown,150)" onkeydown="focusSearchKey(event)">
+    <span id="focus-search-icon">▾</span>
+    <div id="focus-dropdown"></div>
+  </div>
+  <div class="tr">
+    <div id="zdsp">100%</div>
+    <span style="font-size:10px;color:var(--muted);font-family:'IBM Plex Mono',monospace">Scroll=zoom · Space+drag=pan · Drag red→green to connect · Click wire to delete</span>
+  </div>
+</div>
+
+<div id="focus-bar">
+  <div id="focus-exit" onclick="exitFocus()">⊙ Exit Focus</div>
+  <div id="focus-open-editor" onclick="openSubEditor()">⧉ Open in Editor</div>
+</div>
+
+<div id="wrap">
+  <div id="world">
+    <svg id="svg-wires"></svg>
+    <svg id="svg-hit"></svg>
+    <svg id="svg-pills"></svg>
+    <div id="wire-del-tip">× delete wire</div>
+  </div>
+  <div id="empty">
+    <div class="ei">⬡</div>
+    <p>Double-click to add a component<br>or press <code>＋ Add Component</code></p>
+  </div>
+</div>
+
+<!-- Node tooltip -->
+<div id="node-tip"><div class="nt-pn" id="nt-pn"></div><div class="nt-name" id="nt-name"></div></div>
+
+<!-- Inspector -->
+<div id="ins">
+  <div class="ins-h"><h3 id="ins-title">Component</h3><button class="ins-hx" onclick="closeIns()">×</button></div>
+  <div class="ins-b" id="ins-body"></div>
+  <div class="ins-f">
+    <button class="bsave" onclick="saveIns()">Save Changes</button>
+    <button class="bdel" onclick="delInsNode()">Delete</button>
+  </div>
+</div>
+
+<!-- BOM Panel -->
+<div id="bomp">
+  <div class="bh">
+    <h3 onclick="toggleBOM()">Bill of Materials</h3>
+    <span class="bcnt" id="bcnt">0 items</span>
+    <div class="bha">
+      <button class="tb" onclick="exportCSV()">⬇ Export CSV</button>
+      <button class="tb" onclick="toggleBOM()">× Close</button>
+    </div>
+  </div>
+  <div class="btw">
+    <table id="btbl">
+      <thead><tr>
+        <th>Lvl</th><th>P/N</th><th>Rev</th><th>Name</th><th>Type</th>
+        <th style="text-align:right">Qty</th><th>Unit</th>
+        <th style="text-align:right">$/Unit</th><th style="text-align:right">Ext.$</th>
+        <th style="text-align:right">LT(d)</th><th>Supplier</th><th>Notes</th>
+      </tr></thead>
+      <tbody id="btbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<div id="sbar">
+  Components: <span class="hi" id="s-nodes">0</span>
+  &nbsp;|&nbsp; Connections: <span class="hi" id="s-wires">0</span>
+  &nbsp;|&nbsp; Drag red (right) port → green (left) port to connect &nbsp;|&nbsp; Click any wire to delete it
+</div>
+
+<!-- Add/Edit Modal -->
+<div id="mbg">
+  <div id="mdl">
+    <div class="mh"><h2 id="m-title">Add Component</h2><button class="mx" onclick="closeModal()">×</button></div>
+    <div class="mb">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="fg" style="grid-column:1/-1"><div class="fl">Name *</div><input class="fi" id="m-name" maxlength="60" placeholder="e.g. Housing Assembly"></div>
+        <div class="fg"><div class="fl">Part Number</div><input class="fi" id="m-pn" maxlength="30" placeholder="RR-1000"></div>
+        <div class="fg"><div class="fl">Revision</div><input class="fi" id="m-rev" maxlength="10" placeholder="A"></div>
+        <div class="fg"><div class="fl">Quantity</div><input class="fi" id="m-qty" type="number" value="1" min="0" step="0.001"></div>
+        <div class="fg"><div class="fl">Unit</div>
+          <select class="fi" id="m-unit"><option>ea</option><option>kg</option><option>g</option><option>mg</option><option>m</option><option>mm</option><option>cm</option><option>L</option><option>mL</option><option>ft</option><option>in</option><option>lot</option></select>
+        </div>
+        <div class="fg"><div class="fl">Cost/Unit ($)</div><input class="fi" id="m-cost" type="number" placeholder="0.00" min="0" step="0.01"></div>
+        <div class="fg"><div class="fl">Lead Time (days)</div><input class="fi" id="m-lead" type="number" placeholder="0" min="0"></div>
+      </div>
+      <div class="fg"><div class="fl">Type</div><div class="tgrid" id="m-tgrid"></div></div>
+      <div class="fg"><div class="fl">Supplier</div><input class="fi" id="m-sup" placeholder="e.g. McMaster-Carr"></div>
+      <div class="fg"><div class="fl">Notes</div><textarea class="fi" id="m-notes" placeholder="Specs, tolerances…"></textarea></div>
+    </div>
+    <div class="mf"><button class="bcan" onclick="closeModal()">Cancel</button><button class="bok" id="m-ok" onclick="confirmModal()">Add Component</button></div>
+  </div>
+</div>
+
+<!-- CSV Import Modal -->
+<div id="csv-modal-bg">
+  <div class="lm-box">
+    <div class="lm-h">
+      <h2>Import from SOS CSV Exports</h2>
+      <p>Upload your Items and BOMs exports from SOS Inventory. Both files improve the result — at minimum the BOMs file is required.</p>
+    </div>
+    <div class="lm-b" style="display:flex;flex-direction:column;gap:14px;">
+      <div>
+        <div class="fl" style="margin-bottom:6px;">Items CSV <span style="color:var(--dim);font-weight:400;text-transform:none;font-size:10px;">(Items2.csv from SOS)</span></div>
+        <div class="drop-zone" id="dz-items">
+          <input type="file" accept=".csv" onchange="handleFileSelect('items',this)">
+          <div class="dz-icon">📦</div>
+          <div class="dz-label">Drop Items CSV here or click to browse</div>
+          <div class="dz-sub" id="dz-items-sub">Enriches nodes with cost, lead time, supplier</div>
+          <div class="dz-ok" id="dz-items-ok" style="display:none"></div>
+        </div>
+        <div style="font-size:10px;color:var(--cfa);font-family:'IBM Plex Mono',monospace;display:none;margin-top:4px;" id="err-items"></div>
+      </div>
+      <div>
+        <div class="fl" style="margin-bottom:6px;">BOMs CSV <span style="color:var(--dim);font-weight:400;text-transform:none;font-size:10px;">(BOMs2.csv from SOS)</span></div>
+        <div class="drop-zone" id="dz-boms">
+          <input type="file" accept=".csv" onchange="handleFileSelect('boms',this)">
+          <div class="dz-icon">🔗</div>
+          <div class="dz-label">Drop BOMs CSV here or click to browse</div>
+          <div class="dz-sub" id="dz-boms-sub">Assembly → component relationships and quantities</div>
+          <div class="dz-ok" id="dz-boms-ok" style="display:none"></div>
+        </div>
+        <div style="font-size:10px;color:var(--cfa);font-family:'IBM Plex Mono',monospace;display:none;margin-top:4px;" id="err-boms"></div>
+      </div>
+    </div>
+    <div class="lm-f">
+      <span class="lm-skip" onclick="closeCSVModal()">Cancel</span>
+      <button class="bok" id="csv-load-btn" onclick="confirmCSVLoad()" disabled>Load &amp; Build</button>
+    </div>
+  </div>
+</div>
+
+<!-- SOS Connect Modal -->
+<div id="sos-modal-bg" style="position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:250;">
+  <div style="background:var(--panel);border:1px solid var(--border2);border-radius:10px;width:460px;box-shadow:0 32px 80px rgba(0,0,0,.7);">
+    <div style="padding:16px 20px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+      <h2 style="font-size:14px;font-weight:600;">⬡ Connect to SOS Inventory</h2>
+      <button onclick="closeSOSModal()" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:18px;">×</button>
+    </div>
+    <div style="padding:16px 20px;">
+      <p style="font-size:11px;color:var(--dim);margin-bottom:14px;line-height:1.6;">Enter your SOS API access token to pull your item catalog and BOMs. This connection is <strong style="color:var(--cr)">read-only</strong> — no data will be written to SOS.</p>
+      <div class="fg">
+        <div class="fl">Access Token</div>
+        <input class="fi" id="sos-token" type="password" placeholder="Paste your SOS Bearer token…" style="font-family:'IBM Plex Mono',monospace;font-size:11px;">
+      </div>
+      <div class="fg" style="margin-top:4px;">
+        <div class="fl">Filter by Item Name (optional)</div>
+        <input class="fi" id="sos-filter" placeholder="e.g. RDC — leave blank to load all assemblies">
+      </div>
+      <div id="sos-status" style="font-size:11px;font-family:'IBM Plex Mono',monospace;color:var(--dim);min-height:18px;margin-top:6px;"></div>
+    </div>
+    <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+      <button class="bcan" onclick="closeSOSModal()">Cancel</button>
+      <button class="bok" id="sos-load-btn" onclick="loadFromSOS()">Load from SOS</button>
+    </div>
+  </div>
+</div>
+
+<!-- Context Menu -->
+<div id="ctx">
+  <div class="ci" onclick="ctxDo('edit')">✏️ Edit</div>
+  <div class="ci" onclick="ctxDo('focus')">⊙ Focus</div>
+  <div class="ci" onclick="ctxDo('dup')">⧉ Duplicate</div>
+  <div class="ci" onclick="ctxDo('col')">⊟ Toggle Collapse</div>
+  <div class="chr"></div>
+  <div class="ci red" onclick="ctxDo('del')">🗑 Delete</div>
+</div>
+
+<!-- Delete dialog -->
+<div id="del-bg">
+  <div id="del-box">
+    <div class="mh"><h2 id="del-title">Delete Component</h2><button class="mx" onclick="closeDelModal()">×</button></div>
+    <div id="del-body"></div>
+    <div class="mf">
+      <button class="bcan" onclick="closeDelModal()">Cancel</button>
+      <button class="bok" id="del-abandon" onclick="confirmDelete(false)">Delete &amp; Abandon Connections</button>
+      <button class="bok" id="del-reconnect" onclick="confirmDelete(true)" style="background:#3d9eff">Delete &amp; Reconnect</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+// TYPES
+// ─────────────────────────────────────────────
+const TYPES=[
+  {id:'finished',   label:'Finished Good', color:'#3d9eff'},
+  {id:'assembly',   label:'Assembly',      color:'#f7c948'},
+  {id:'subassembly',label:'Sub-Assembly',  color:'#e07b39'},
+  {id:'raw',        label:'Raw Material',  color:'#5ec47a'},
+  {id:'purchased',  label:'Purchased Part',color:'#b87fff'},
+  {id:'fastener',   label:'Fastener',      color:'#ff6b8a'},
+  {id:'packaging',  label:'Packaging',     color:'#4ecdc4'},
+  {id:'other',      label:'Other',         color:'#8899aa'},
+];
+const ICONS={finished:'⬡',assembly:'⬢',subassembly:'◈',raw:'◆',purchased:'◉',fastener:'⊕',packaging:'▣',other:'◌'};
+function TI(id){return TYPES.find(t=>t.id===id)||TYPES[7];}
+
+// ─────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────
+let nodes=[],wires=[],NID=0,WID=0;
+let panX=0,panY=0,scale=1;
+const SMIN=0.05,SMAX=3;
+let panning=false,panStart=null,spaceDown=false;
+let dragging=null,dOff={x:0,y:0};
+let wireDrawing=null; // {fromId, path}
+let selNode=null,ctxNode=null;
+let modalSpawn=null,mType='finished';
+let insId=null,bomOpen=false;
+
+// NODE_W must match CSS .node width
+const NODE_W=236;
+
+// ─────────────────────────────────────────────
+// TRANSFORM  (world layer CSS transform)
+// ─────────────────────────────────────────────
+let _rafPending = false;
+function applyTx(){
+  document.getElementById('zdsp').textContent=Math.round(scale*100)+'%';
+  if(_rafPending) return;
+  _rafPending = true;
+  requestAnimationFrame(()=>{
+    _rafPending = false;
+    document.getElementById('world').style.transform=`translate(${panX}px,${panY}px) scale(${scale})`;
+    document.getElementById('wrap').style.setProperty('--dot-opacity', scale < 0.15 ? '0' : '1');
+    if(scale >= TOOLTIP_ZOOM_THRESHOLD) hideNodeTip();
+    renderWires();
+  });
+}
+function toWorld(sx,sy){return{x:(sx-panX)/scale, y:(sy-panY)/scale};}
+function setZoom(ns,ox,oy){
+  const r=document.getElementById('wrap').getBoundingClientRect();
+  if(ox===undefined)ox=r.width/2;
+  if(oy===undefined)oy=r.height/2;
+  const s=Math.min(SMAX,Math.max(SMIN,ns));
+  panX=ox-((ox-panX)/scale)*s;
+  panY=oy-((oy-panY)/scale)*s;
+  scale=s;
+  applyTx();
+}
+
+// ─────────────────────────────────────────────
+// PORT POSITIONS  (pure geometry, no DOM rects)
+// ─────────────────────────────────────────────
+// Left port (green, children) = left edge centre
+// Right port (red, parent)    = right edge centre
+function portPos(nd, side){
+  // We need the node height to find vertical centre.
+  // Use offsetHeight if element exists, else a sensible estimate.
+  const el=document.getElementById('node-'+nd.id);
+  const h=el ? el.offsetHeight : (nd.collapsed ? 54 : 130);
+  if(side==='L') return {x: nd.x,          y: nd.y + h/2};
+  if(side==='R') return {x: nd.x + NODE_W, y: nd.y + h/2};
+}
+
+// ─────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────
+function init(){
+  buildTGrid('m-tgrid','finished',t=>{mType=t;});
+
+  // Check for saved state injected by saveHTML()
+  const saved=document.getElementById('__saved_state__');
+  if(saved){
+    try{
+      const s=JSON.parse(saved.textContent);
+      nodes=s.nodes; wires=s.wires; NID=s.NID; WID=s.WID;
+      migrateQty();
+      renderAll(); updateStatus(); updateBOM();
+      setupEvents();
+      setTimeout(fitView,60);
+      return;
+    }catch(e){console.warn('Could not restore saved state',e);}
+  }
+
+    // ── Default state pre-populated from Items.csv + BOMs.csv ──
+  const defaultState = {"nodes":[{"id":1,"pn":"RDC01-A002","name":"Finger Cuff Assembly","rev":"","type":"assembly","qty":1,"unit":"ea","cost":3.65,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":1},{"id":2,"pn":"RDC01-P006","name":"Silicon Bladder","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.73,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":2},{"id":3,"pn":"RDC01-P010","name":"Finger Cuff - Left End Cap","rev":"","type":"purchased","qty":1,"unit":"ea","cost":1.065,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":3},{"id":4,"pn":"RDC01-P011","name":"Finger Cuff - Right End Cap","rev":"","type":"purchased","qty":1,"unit":"ea","cost":1.065,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":4},{"id":5,"pn":"RCD01-A004","name":"Cuff Body Assembly","rev":"","type":"assembly","qty":1,"unit":"ea","cost":0,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":5},{"id":6,"pn":"RDC01-P013","name":"PVC Hose","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.134,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":6},{"id":7,"pn":"RDD01-A002","name":"Circuit Board Assembly","rev":"","type":"assembly","qty":1,"unit":"ea","cost":0,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":7},{"id":8,"pn":"RDD01-P019","name":"Battery Board Lightpipe","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.35,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":8},{"id":9,"pn":"RDD01-P025","name":"Worklight Lens","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.35,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":9},{"id":10,"pn":"RDD01-P015","name":"Thru-Hole Mini Mounting Bracket","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.34,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":10},{"id":11,"pn":"RDD01-P011","name":"Jog Switch","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.31,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":11},{"id":12,"pn":"RDD01-A005","name":"UI Plastics Assembly","rev":"","type":"purchased","qty":1,"unit":"ea","cost":3.15,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":12},{"id":13,"pn":"RDD01-P003","name":"#3 Black Oxide Self Tapping Screws","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.04775,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":13},{"id":14,"pn":"RDD01-A015","name":"Hi-Q.A. Circuit Board Assembly","rev":"","type":"purchased","qty":1,"unit":"ea","cost":207.38733,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":14},{"id":15,"pn":"RDC-A1-UC","name":"Ring Rescue Compression Device [Standard] - CAN/US","rev":"","type":"assembly","qty":1,"unit":"ea","cost":11.23048,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":15},{"id":16,"pn":"RDC01-P001","name":"Direct Device Label (RDC)","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.32936,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":16},{"id":17,"pn":"RDC01-P012","name":"Hand Pump","rev":"","type":"purchased","qty":1,"unit":"ea","cost":4.2,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":17},{"id":18,"pn":"RDD-A1-UC","name":"Ring Rescue Dolphin Ring Cutter [Standard] - CAN/US","rev":"","type":"assembly","qty":1,"unit":"ea","cost":482.625,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":18},{"id":19,"pn":"[NS] RDD-A1-UC","name":"Non-Serialized Dolphin Ring Cutter","rev":"","type":"assembly","qty":1,"unit":"ea","cost":0,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":19},{"id":20,"pn":"RDD01-P054","name":"Accent Ring","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.63,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":20},{"id":21,"pn":"RDD01-P062","name":"Direct Device Label (RDD)","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.41812,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":21},{"id":22,"pn":"RDD01-P045","name":"Thumbscrew","rev":"","type":"purchased","qty":1,"unit":"ea","cost":3.5,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":22},{"id":23,"pn":"RKDC-A1-UC","name":"Ring Rescue Full Kit [Standard] - CAN/US","rev":"","type":"finished","qty":1,"unit":"ea","cost":590.44,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":23},{"id":24,"pn":"RQA-U08-UC","name":"Ring Rescue AssureCUT Discs [8 pk] - CAN/US","rev":"","type":"assembly","qty":1,"unit":"ea","cost":51.99468,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":24},{"id":25,"pn":"RQL-U01-UC","name":"Ring Rescue Lubricant [1 pk] - CAN/US","rev":"","type":"assembly","qty":1,"unit":"ea","cost":0,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":25},{"id":26,"pn":"RDC01-P002","name":"CD - Quick Start Guide","rev":"","type":"purchased","qty":1,"unit":"ea","cost":2.03684,"lead":0,"supplier":"Advocate Printing","notes":"","x":0,"y":0,"collapsed":false,"zi":26},{"id":27,"pn":"RDC01-P003","name":"CD - Technical Reference","rev":"","type":"purchased","qty":1,"unit":"ea","cost":1.81684,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":27},{"id":28,"pn":"RDD01-P077","name":"Dolphin - Quick Start Guide","rev":"","type":"purchased","qty":1,"unit":"ea","cost":2.03684,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":28},{"id":29,"pn":"RKDC01-P005","name":"Internal Sticker","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.38554,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":29},{"id":30,"pn":"RKDC01-P007","name":"Side Sticker","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.22719,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":30},{"id":31,"pn":"RKDC01-P008","name":"Regulatory Sticker [Back] - Standard Kit","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.47708,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":31},{"id":32,"pn":"RKDC01-P009","name":"Ring Rescue Sticker [Case Top] - Purple","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.25732,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":32},{"id":33,"pn":"RKDC01-P013","name":"Elastic Band","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.35489,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":33},{"id":34,"pn":"RKDC01-P020","name":"Case [Blue] (RKDC)","rev":"","type":"purchased","qty":1,"unit":"ea","cost":31.21296,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":34},{"id":35,"pn":"RDD01-P078","name":"Dolphin - Technical Reference","rev":"","type":"purchased","qty":1,"unit":"ea","cost":3.46684,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":35},{"id":36,"pn":"RKDC01-P022","name":"Close Case Label","rev":"","type":"purchased","qty":1,"unit":"ea","cost":1.0316,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":36},{"id":37,"pn":"RKDC01-P015","name":"Registration Card","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.27173,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":37},{"id":38,"pn":"RDD01-P059","name":"Wall Adapter - US","rev":"","type":"purchased","qty":1,"unit":"ea","cost":21.0768,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":38},{"id":39,"pn":"RDD01-P060","name":"Guard Cleaning Pick","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.88,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":39},{"id":40,"pn":"RKDC01-P006","name":"Front Sticker","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.87381,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":40},{"id":41,"pn":"RKDC-D1-UC","name":"Ring Rescue Full Kit [Demo] - CAN/US","rev":"","type":"finished","qty":1,"unit":"ea","cost":0,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":41},{"id":42,"pn":"RKDC01-P017","name":"Regulatory Sticker [Back] - Demo Kit","rev":"","type":"purchased","qty":1,"unit":"ea","cost":3.2067,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":42},{"id":43,"pn":"RQR01-P003","name":"Ziplock Ring Bag","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.2036,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":43},{"id":44,"pn":"RQR01-P001","name":"Demo Ring Pack Label","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.7902,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":44},{"id":45,"pn":"RQR01-P002","name":"Demo Rings","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.89744,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":45},{"id":46,"pn":"RQAL-U01-UC","name":"Ring Rescue Lubricant + 8 pk of AssureCUT Discs [1 pk] - CAN/US","rev":"","type":"assembly","qty":1,"unit":"ea","cost":52.7932,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":46},{"id":47,"pn":"RKDC-P1-UC","name":"Ring Rescue Full Kit [Promo] - CAN/US","rev":"","type":"finished","qty":1,"unit":"ea","cost":655.78,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":47},{"id":48,"pn":"RKDC01-P016","name":"Regulatory Sticker [Back] - Promo Kit","rev":"","type":"purchased","qty":1,"unit":"ea","cost":2.7998,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":48},{"id":49,"pn":"RQALR-U01-UC","name":"Ring Rescue Lubricant + 8 pk of AssureCUT Discs + 8pk Demo Rings [1 pk] - CAN/US","rev":"","type":"finished","qty":1,"unit":"ea","cost":0,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":49},{"id":50,"pn":"RQAL01-P001","name":"Product Box (RQAL)","rev":"","type":"purchased","qty":1,"unit":"ea","cost":2.4311,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":50},{"id":51,"pn":"RQA01-P001","name":"AssureCUT Disc Sled","rev":"","type":"purchased","qty":1,"unit":"ea","cost":1.29,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":51},{"id":52,"pn":"RQA01-P002","name":"AssureCUT Disc","rev":"","type":"purchased","qty":1,"unit":"ea","cost":3.39,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":52},{"id":53,"pn":"RQA01-P003","name":"AssureCUT Disc Plastic Sleeve","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.2789,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":53},{"id":54,"pn":"RQA01-P005","name":"AssureCUT Disc Label - 8pk","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.13402,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":54},{"id":55,"pn":"RQA-U25-UC","name":"Ring Rescue AssureCUT Discs [25pk] - CAN/US","rev":"","type":"finished","qty":1,"unit":"ea","cost":0,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":55},{"id":56,"pn":"RQL01-P001","name":"Lubricant Compound","rev":"","type":"purchased","qty":1,"unit":"ea","cost":13.86667,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":56},{"id":57,"pn":"RQL01-P002","name":"Bottle - Top","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.18,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":57},{"id":58,"pn":"RQL01-P003","name":"Bottle - Bottom","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.12,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":58},{"id":59,"pn":"RQL01-P004","name":"Ring Lubricant Label","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.17033,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":59},{"id":60,"pn":"RQL-U06-UC","name":"Ring Rescue Lubricant [6 pk] - CAN/US","rev":"","type":"finished","qty":1,"unit":"ea","cost":0,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":60},{"id":61,"pn":"RQL-U12-UC","name":"Ring Rescue Lubricant [12 pk] - CAN/US","rev":"","type":"finished","qty":1,"unit":"ea","cost":0,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":61},{"id":62,"pn":"RQL-U60-UC","name":"Ring Rescue Lubricant [60 pk] - CAN/US","rev":"","type":"finished","qty":1,"unit":"ea","cost":0,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":62},{"id":63,"pn":"RQR-U08-UC","name":"Ring Rescue Demo Rings [8pk] - CAN/US","rev":"","type":"finished","qty":1,"unit":"ea","cost":0,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":63},{"id":64,"pn":"RDD01-A012","name":"Actuator Assembly","rev":"","type":"assembly","qty":1,"unit":"ea","cost":0,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":64},{"id":65,"pn":"RDD01-P038","name":"Actuator","rev":"","type":"purchased","qty":1,"unit":"ea","cost":33.11957,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":65},{"id":66,"pn":"RDD01-P036","name":"Spring Pin","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.12583,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":66},{"id":67,"pn":"RDD01-P044","name":"Guard Lever Arm","rev":"","type":"purchased","qty":1,"unit":"ea","cost":10.1,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":67},{"id":68,"pn":"[NS] RDD-A1-UC - Assembly Kit","name":"Non-Serialized Dolphin Ring Cutter - Assembly Kit","rev":"","type":"assembly","qty":1,"unit":"ea","cost":0,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":68},{"id":69,"pn":"RDD01-A013","name":"Shaft Lock Assembly","rev":"","type":"assembly","qty":1,"unit":"ea","cost":0,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":69},{"id":70,"pn":"RDD01-P052","name":"Shaft Lock","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.7,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":70},{"id":71,"pn":"RDD01-P041","name":"Shaft Lock Bushing","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.43352,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":71},{"id":72,"pn":"RDD01-A014","name":"Motor Bracket Assembly","rev":"","type":"assembly","qty":1,"unit":"ea","cost":0,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":72},{"id":73,"pn":"RDD01-P042","name":"Motor Bracket","rev":"","type":"purchased","qty":1,"unit":"ea","cost":13,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":73},{"id":74,"pn":"RDD01-P050","name":"Bearing Large","rev":"","type":"purchased","qty":1,"unit":"ea","cost":1.86998,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":74},{"id":75,"pn":"RDD01-P049","name":"Bearing Small","rev":"","type":"purchased","qty":1,"unit":"ea","cost":2.02998,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":75},{"id":76,"pn":"RDD01-P031","name":"Flanged Sleeve Bushing","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.4697,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":76},{"id":77,"pn":"RDD01-P001","name":"Left Clamshell","rev":"","type":"purchased","qty":1,"unit":"ea","cost":4.3,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":77},{"id":78,"pn":"RDD01-P051","name":"Lip Seal","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.77,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":78},{"id":79,"pn":"RDD01-P022","name":"#0 Self Tapping Screws","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.2446,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":79},{"id":80,"pn":"RDD01-P010","name":"#3 Zinc Coated Self Tapping Screws","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.04527,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":80},{"id":81,"pn":"RDD01-P016","name":"Master Power SW","rev":"","type":"purchased","qty":1,"unit":"ea","cost":1.99156,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":81},{"id":82,"pn":"RDD01-P066","name":"ASADHSADH26K152 - Jumper SADH-002G-P0.2x2.6 (152.4mm) [JST 26ga Jumper Wire - Pre-crimped]","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.61243,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":82},{"id":83,"pn":"RDD01-P065","name":"JST - Three Terminal Connector","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.054,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":83},{"id":84,"pn":"RDD01-P017","name":"Battery Pack","rev":"","type":"purchased","qty":1,"unit":"ea","cost":23.62,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":84},{"id":85,"pn":"RDD01-P013","name":"Battery Foam","rev":"","type":"purchased","qty":1,"unit":"ea","cost":16.155,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":85},{"id":86,"pn":"RDD01-P021","name":"#1 Self Tapping Screws","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.35619,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":86},{"id":87,"pn":"RDD01-P081","name":"Barrel Jack Collar","rev":"","type":"purchased","qty":1,"unit":"ea","cost":2.6,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":87},{"id":88,"pn":"RDD01-P004","name":"Trigger","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.7,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":88},{"id":89,"pn":"RDD01-P057","name":"Trigger Spring","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.39107,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":89},{"id":90,"pn":"RDD01-P079","name":"Spring Guide Pin","rev":"","type":"purchased","qty":1,"unit":"ea","cost":2.6,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":90},{"id":91,"pn":"RDD01-P058","name":"Actuator Pin","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.51604,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":91},{"id":92,"pn":"RDD01-P030","name":"Actuator Mounting Bracket","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.7,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":92},{"id":93,"pn":"RDD01-P082","name":"Rear Motor Bracket Foam","rev":"","type":"purchased","qty":1,"unit":"ea","cost":92.175,"lead":0,"supplier":"McMaster-Carr USD","notes":"","x":0,"y":0,"collapsed":false,"zi":93},{"id":94,"pn":"RDD01-P080","name":"Rear Motor Bracket","rev":"","type":"purchased","qty":1,"unit":"ea","cost":2.6,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":94},{"id":95,"pn":"RDD01-P034","name":"Retaining Ring","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.10226,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":95},{"id":96,"pn":"RDD01-P046","name":"Guard Shaft","rev":"","type":"purchased","qty":1,"unit":"ea","cost":1.55,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":96},{"id":97,"pn":"RDD01-P033","name":"Curved Disk Spring","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.31,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":97},{"id":98,"pn":"RDD01-P002","name":"Right Clamshell","rev":"","type":"purchased","qty":1,"unit":"ea","cost":4.14,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":98},{"id":99,"pn":"RDD01-P053","name":"Guard","rev":"","type":"purchased","qty":1,"unit":"ea","cost":8.05,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":99},{"id":100,"pn":"RDD01-P056","name":"Guard Screw - Tamper-Proof Torx","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.29438,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":100},{"id":101,"pn":"RDD01-P048","name":"Motor","rev":"","type":"purchased","qty":1,"unit":"ea","cost":17.23,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":101},{"id":102,"pn":"RDD01-P035","name":"Cheesehead Screws","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.1533,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":102},{"id":103,"pn":"RDD01-P032","name":"Thrust Washer 6mm","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.62,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":103},{"id":104,"pn":"RDD01-P047","name":"Miter Gear","rev":"","type":"purchased","qty":1,"unit":"ea","cost":3.7,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":104},{"id":105,"pn":"RDD01-P043","name":"Drive Shaft","rev":"","type":"purchased","qty":1,"unit":"ea","cost":2.85,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":105},{"id":106,"pn":"RDD01-P037","name":"Thrust Washer 4mm","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.4932,"lead":0,"supplier":"IGUS","notes":"","x":0,"y":0,"collapsed":false,"zi":106},{"id":107,"pn":"RDD01-P040","name":"Shaft Lock Compression Spring","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.41931,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":107},{"id":108,"pn":"Kingstec Metal","name":"Kingstec Metal","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":108},{"id":109,"pn":"RDD01-P039","name":"M4 x 0.7 4mm Set Screw 18-8 SS Cup Point","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.82818,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":109},{"id":110,"pn":"RDC01-P009","name":"90 Degree Hose Fitting","rev":"","type":"purchased","qty":1,"unit":"ea","cost":1.065,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":110},{"id":111,"pn":"RDC01-P007","name":"O-Ring - Round Profile","rev":"","type":"purchased","qty":1,"unit":"ea","cost":0.07193,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":111},{"id":112,"pn":"RDC01-P005","name":"Finger Cuff Body","rev":"","type":"purchased","qty":1,"unit":"ea","cost":1.065,"lead":0,"supplier":"","notes":"","x":0,"y":0,"collapsed":false,"zi":112}],"wires":[{"id":1,"fn":2,"tn":1,"qty":1},{"id":2,"fn":3,"tn":1,"qty":1},{"id":3,"fn":4,"tn":1,"qty":1},{"id":4,"fn":5,"tn":1,"qty":1},{"id":5,"fn":6,"tn":1,"qty":1},{"id":6,"fn":8,"tn":7,"qty":1},{"id":7,"fn":9,"tn":7,"qty":1},{"id":8,"fn":10,"tn":7,"qty":2},{"id":9,"fn":11,"tn":7,"qty":2},{"id":10,"fn":12,"tn":7,"qty":1},{"id":11,"fn":13,"tn":7,"qty":4},{"id":12,"fn":14,"tn":7,"qty":1},{"id":13,"fn":16,"tn":15,"qty":1},{"id":14,"fn":17,"tn":15,"qty":1},{"id":15,"fn":1,"tn":15,"qty":1},{"id":16,"fn":19,"tn":18,"qty":1},{"id":17,"fn":20,"tn":18,"qty":1},{"id":18,"fn":21,"tn":18,"qty":1},{"id":19,"fn":22,"tn":18,"qty":1},{"id":20,"fn":18,"tn":23,"qty":1},{"id":21,"fn":15,"tn":23,"qty":1},{"id":22,"fn":24,"tn":23,"qty":1},{"id":23,"fn":25,"tn":23,"qty":1},{"id":24,"fn":26,"tn":23,"qty":1},{"id":25,"fn":27,"tn":23,"qty":1},{"id":26,"fn":28,"tn":23,"qty":1},{"id":27,"fn":29,"tn":23,"qty":1},{"id":28,"fn":30,"tn":23,"qty":2},{"id":29,"fn":31,"tn":23,"qty":1},{"id":30,"fn":32,"tn":23,"qty":1},{"id":31,"fn":33,"tn":23,"qty":2},{"id":32,"fn":34,"tn":23,"qty":1},{"id":33,"fn":35,"tn":23,"qty":1},{"id":34,"fn":36,"tn":23,"qty":1},{"id":35,"fn":37,"tn":23,"qty":1},{"id":36,"fn":38,"tn":23,"qty":1},{"id":37,"fn":39,"tn":23,"qty":1},{"id":38,"fn":40,"tn":23,"qty":1},{"id":39,"fn":18,"tn":41,"qty":1},{"id":40,"fn":15,"tn":41,"qty":1},{"id":41,"fn":34,"tn":41,"qty":1},{"id":42,"fn":26,"tn":41,"qty":1},{"id":43,"fn":27,"tn":41,"qty":1},{"id":44,"fn":28,"tn":41,"qty":1},{"id":45,"fn":35,"tn":41,"qty":1},{"id":46,"fn":33,"tn":41,"qty":2},{"id":47,"fn":32,"tn":41,"qty":1},{"id":48,"fn":30,"tn":41,"qty":2},{"id":49,"fn":36,"tn":41,"qty":1},{"id":50,"fn":29,"tn":41,"qty":1},{"id":51,"fn":37,"tn":41,"qty":1},{"id":52,"fn":42,"tn":41,"qty":1},{"id":53,"fn":24,"tn":41,"qty":1},{"id":54,"fn":25,"tn":41,"qty":1},{"id":55,"fn":43,"tn":41,"qty":1},{"id":56,"fn":44,"tn":41,"qty":1},{"id":57,"fn":45,"tn":41,"qty":8},{"id":58,"fn":46,"tn":41,"qty":1},{"id":59,"fn":38,"tn":41,"qty":1},{"id":60,"fn":39,"tn":41,"qty":1},{"id":61,"fn":40,"tn":41,"qty":1},{"id":62,"fn":18,"tn":47,"qty":1},{"id":63,"fn":15,"tn":47,"qty":1},{"id":64,"fn":34,"tn":47,"qty":1},{"id":65,"fn":26,"tn":47,"qty":1},{"id":66,"fn":27,"tn":47,"qty":1},{"id":67,"fn":28,"tn":47,"qty":1},{"id":68,"fn":35,"tn":47,"qty":1},{"id":69,"fn":33,"tn":47,"qty":2},{"id":70,"fn":32,"tn":47,"qty":1},{"id":71,"fn":30,"tn":47,"qty":2},{"id":72,"fn":36,"tn":47,"qty":1},{"id":73,"fn":29,"tn":47,"qty":1},{"id":74,"fn":37,"tn":47,"qty":1},{"id":75,"fn":48,"tn":47,"qty":1},{"id":76,"fn":24,"tn":47,"qty":1},{"id":77,"fn":25,"tn":47,"qty":1},{"id":78,"fn":43,"tn":47,"qty":1},{"id":79,"fn":44,"tn":47,"qty":1},{"id":80,"fn":45,"tn":47,"qty":8},{"id":81,"fn":46,"tn":47,"qty":1},{"id":82,"fn":38,"tn":47,"qty":1},{"id":83,"fn":39,"tn":47,"qty":1},{"id":84,"fn":40,"tn":47,"qty":1},{"id":85,"fn":46,"tn":49,"qty":1},{"id":86,"fn":43,"tn":49,"qty":1},{"id":87,"fn":45,"tn":49,"qty":8},{"id":88,"fn":50,"tn":46,"qty":1},{"id":89,"fn":24,"tn":46,"qty":1},{"id":90,"fn":25,"tn":46,"qty":1},{"id":91,"fn":51,"tn":24,"qty":1},{"id":92,"fn":52,"tn":24,"qty":8},{"id":93,"fn":53,"tn":24,"qty":1},{"id":94,"fn":54,"tn":24,"qty":1},{"id":95,"fn":52,"tn":55,"qty":25},{"id":96,"fn":56,"tn":25,"qty":30},{"id":97,"fn":57,"tn":25,"qty":1},{"id":98,"fn":58,"tn":25,"qty":1},{"id":99,"fn":59,"tn":25,"qty":1},{"id":100,"fn":56,"tn":60,"qty":180},{"id":101,"fn":57,"tn":60,"qty":6},{"id":102,"fn":58,"tn":60,"qty":6},{"id":103,"fn":59,"tn":60,"qty":6},{"id":104,"fn":25,"tn":61,"qty":12},{"id":105,"fn":56,"tn":62,"qty":1800},{"id":106,"fn":57,"tn":62,"qty":60},{"id":107,"fn":58,"tn":62,"qty":60},{"id":108,"fn":59,"tn":62,"qty":60},{"id":109,"fn":44,"tn":63,"qty":1},{"id":110,"fn":45,"tn":63,"qty":8},{"id":111,"fn":43,"tn":63,"qty":1},{"id":112,"fn":65,"tn":64,"qty":1},{"id":113,"fn":66,"tn":64,"qty":1},{"id":114,"fn":67,"tn":64,"qty":1},{"id":115,"fn":68,"tn":19,"qty":1},{"id":116,"fn":70,"tn":69,"qty":1},{"id":117,"fn":71,"tn":69,"qty":1},{"id":118,"fn":73,"tn":72,"qty":1},{"id":119,"fn":74,"tn":72,"qty":1},{"id":120,"fn":75,"tn":72,"qty":1},{"id":121,"fn":76,"tn":72,"qty":2},{"id":122,"fn":77,"tn":68,"qty":1},{"id":123,"fn":78,"tn":68,"qty":1},{"id":124,"fn":7,"tn":68,"qty":1},{"id":125,"fn":79,"tn":68,"qty":6},{"id":126,"fn":80,"tn":68,"qty":4},{"id":127,"fn":81,"tn":68,"qty":1},{"id":128,"fn":82,"tn":68,"qty":3.5},{"id":129,"fn":83,"tn":68,"qty":3},{"id":130,"fn":84,"tn":68,"qty":1},{"id":131,"fn":85,"tn":68,"qty":0.0059},{"id":132,"fn":86,"tn":68,"qty":2},{"id":133,"fn":87,"tn":68,"qty":1},{"id":134,"fn":88,"tn":68,"qty":1},{"id":135,"fn":89,"tn":68,"qty":1},{"id":136,"fn":90,"tn":68,"qty":1},{"id":137,"fn":64,"tn":68,"qty":1},{"id":138,"fn":91,"tn":68,"qty":1},{"id":139,"fn":92,"tn":68,"qty":1},{"id":140,"fn":13,"tn":68,"qty":17},{"id":141,"fn":93,"tn":68,"qty":0.0104},{"id":142,"fn":94,"tn":68,"qty":1},{"id":143,"fn":95,"tn":68,"qty":1},{"id":144,"fn":96,"tn":68,"qty":1},{"id":145,"fn":97,"tn":68,"qty":1},{"id":146,"fn":98,"tn":68,"qty":1},{"id":147,"fn":99,"tn":68,"qty":1},{"id":148,"fn":100,"tn":68,"qty":1},{"id":149,"fn":101,"tn":68,"qty":1},{"id":150,"fn":102,"tn":68,"qty":3},{"id":151,"fn":103,"tn":68,"qty":2},{"id":152,"fn":104,"tn":68,"qty":2},{"id":153,"fn":105,"tn":68,"qty":1},{"id":154,"fn":106,"tn":68,"qty":1},{"id":155,"fn":107,"tn":68,"qty":1},{"id":156,"fn":69,"tn":68,"qty":1},{"id":157,"fn":72,"tn":68,"qty":1},{"id":158,"fn":108,"tn":68,"qty":1},{"id":159,"fn":109,"tn":68,"qty":2},{"id":160,"fn":110,"tn":5,"qty":1},{"id":161,"fn":111,"tn":5,"qty":1},{"id":162,"fn":112,"tn":5,"qty":1}],"NID":112,"WID":162};
+  nodes = defaultState.nodes;
+  wires = defaultState.wires;
+  NID   = defaultState.NID;
+  WID   = defaultState.WID;
+  migrateQty();
+  setupEvents();
+  renderThenLayout();
+}
+
+// ─────────────────────────────────────────────
+// DATA
+// ─────────────────────────────────────────────
+function addNode(d){const id=++NID;nodes.push({id,collapsed:false,zi:id+10,...d});return id;}
+function addWire(fn,tn,qty){
+  if(fn===tn) return;
+  if(wires.some(w=>w.fn===fn&&w.tn===tn)) return;
+  wires.push({id:++WID,fn,tn,qty:qty||1});
+}
+function getWire(id){return wires.find(w=>w.id===id);}
+function getNode(id){return nodes.find(n=>n.id===id);}
+// Migrate old saves that store qty only on nodes — copy node qty to each of its outgoing wires
+function migrateQty(){
+  wires.forEach(w=>{ if(w.qty===undefined||w.qty===null){ const fn=getNode(w.fn); w.qty=fn?fn.qty||1:1; }});
+}
+
+// ─────────────────────────────────────────────
+// RENDER ALL
+// ─────────────────────────────────────────────
+function renderAll(){
+  document.querySelectorAll('.node').forEach(e=>e.remove());
+  nodes.forEach(renderNode);
+  renderWires();
+  document.getElementById('empty').style.display=nodes.length?'none':'block';
+  // Re-apply focus state if active
+  if(focusNodeId) enterFocus(focusNodeId);
+}
+
+function renderNode(nd){
+  const ti=TI(nd.type);
+  const el=document.createElement('div');
+  el.className='node'+(nd.collapsed?' collapsed':'')+(selNode===nd.id?' sel':'');
+  el.id='node-'+nd.id;
+  el.style.cssText=`left:${nd.x}px;top:${nd.y}px;z-index:${nd.zi}`;
+  const hasL=wires.some(w=>w.fn===nd.id); // has children wires going right
+  const hasR=wires.some(w=>w.tn===nd.id); // has parent wire going right
+  const kids=wires.filter(w=>w.fn===nd.id).length;
+  // pn = SOS item name (part number), name = SOS description (display name)
+  const displayName = nd.name || nd.pn || '—';
+  const displayPN   = nd.pn   || '—';
+  el.innerHTML=`
+    <div class="nbar" style="background:${ti.color}"></div>
+    <div class="nhdr">
+      <div class="ninfo">
+        <div class="npn">${displayPN}${nd.rev?' · Rev '+nd.rev:''}</div>
+        <div class="nname">${displayName}</div>
+        <div class="nbadge" style="background:${ti.color}22;color:${ti.color}">${ICONS[nd.type]||'◌'} ${ti.label}</div>
+      </div>
+      <div class="nbtns">
+        <button class="nbtn" title="${nd.collapsed?'Expand':'Collapse'}">${nd.collapsed?'⊞':'⊟'}</button>
+        <button class="nbtn x" title="Delete">×</button>
+      </div>
+    </div>
+    <div class="ncsm">${kids} child${kids!==1?'ren':''} hidden</div>
+    <div class="nbody">
+      <div class="nmeta">
+        ${(()=>{
+          const parentWires=wires.filter(w=>w.fn===nd.id);
+          if(!parentWires.length) return `<div class="chip"><span class="l">QTY</span>&nbsp;<span class="v">${nd.qty||1} ${nd.unit}</span></div>`;
+          return parentWires.map(w=>{
+            const par=getNode(w.tn);
+            const label=par?(par.pn||par.name):'?';
+            const q=w.qty||1;
+            return `<div class="chip chip-qty" title="${par?(par.name||par.pn):''}"><span class="l">QTY</span>&nbsp;<span class="v">${q%1===0?q:q.toFixed(2).replace(/\.?0+$/,'')}</span><span class="chip-par"> → ${label}</span></div>`;
+          }).join('');
+        })()}
+        ${nd.cost>0?`<div class="chip"><span class="l">$</span>&nbsp;<span class="v">${(+nd.cost).toFixed(2)}</span></div>`:''}
+        ${nd.lead>0?`<div class="chip"><span class="l">LT</span>&nbsp;<span class="v">${nd.lead}d</span></div>`:''}
+      </div>
+      ${nd.supplier?`<div class="ndesc">📦 ${nd.supplier}</div>`:''}
+      ${nd.notes?`<div class="ndesc">${nd.notes}</div>`:''}
+      <div class="nports">
+        <span class="plbl">children</span>
+        <span class="plbl">parent</span>
+        <div class="pdot L${hasL?' on':''}" title="Children connect here"></div>
+        <div class="pdot R${hasR?' on':''}" title="Drag to parent"></div>
+      </div>
+    </div>`;
+
+  document.getElementById('world').appendChild(el);
+
+  // drag header
+  el.querySelector('.nhdr').addEventListener('mousedown',e=>{
+    if(e.target.closest('.nbtns'))return;
+    e.stopPropagation(); e.preventDefault();
+    startDrag(e,nd.id); selectNode(nd.id);
+  });
+
+  const [colBtn,delBtn]=el.querySelectorAll('.nbtn');
+  colBtn.addEventListener('click',e=>{e.stopPropagation();toggleCollapse(nd.id);});
+  delBtn.addEventListener('click',e=>{e.stopPropagation();deleteNode(nd.id);});
+
+  // RIGHT port (red) = drag start
+  el.querySelector('.pdot.R').addEventListener('mousedown',e=>{
+    e.stopPropagation(); e.preventDefault();
+    startWireDraw(e, nd.id);
+  });
+  // LEFT port (green) = drop target
+  el.querySelector('.pdot.L').addEventListener('mouseup',e=>{
+    e.stopPropagation();
+    finishWireDraw(nd.id);
+  });
+
+  el.querySelector('.nhdr').addEventListener('dblclick',e=>{e.stopPropagation();openIns(nd.id);});
+  el.addEventListener('contextmenu',e=>{e.preventDefault();ctxNode=nd.id;showCtx(e.clientX,e.clientY);});
+}
+
+// ─────────────────────────────────────────────
+// WIRE RENDERING
+// ─────────────────────────────────────────────
+function renderWires(){
+  const svgW=document.getElementById('svg-wires');
+  const svgH=document.getElementById('svg-hit');
+  const svgP=document.getElementById('svg-pills');
+  const drawPath=svgW.querySelector('.wire-drawing');
+  svgW.innerHTML=''; svgH.innerHTML=''; svgP.innerHTML='';
+  if(drawPath) svgW.appendChild(drawPath);
+
+  let maxX=3000,maxY=3000;
+  nodes.forEach(n=>{maxX=Math.max(maxX,n.x+400);maxY=Math.max(maxY,n.y+400);});
+  [svgW,svgH,svgP].forEach(s=>{s.setAttribute('width',maxX);s.setAttribute('height',maxY);});
+
+  wires.forEach(w=>{
+    const fn=getNode(w.fn), tn=getNode(w.tn);
+    if(!fn||!tn) return;
+    const a=portPos(fn,'R');
+    const b=portPos(tn,'L');
+    const d=curvePath(a,b);
+
+    // visible wire
+    const vis=makePath(d,'wire');
+    vis.setAttribute('stroke','#3d9eff');
+    svgW.appendChild(vis);
+
+    // fat invisible hit area
+    const hit=makePath(d,'wire-hit');
+    hit.setAttribute('stroke','transparent');
+    hit.setAttribute('stroke-width','14');
+    hit.style.cursor='pointer';
+    hit.dataset.wid=w.id;
+    svgH.appendChild(hit);
+
+    hit.addEventListener('mouseenter',()=>{vis.classList.add('whov');showWireTip(a,b);});
+    hit.addEventListener('mouseleave',()=>{vis.classList.remove('whov');hideWireTip();});
+    hit.addEventListener('click',e=>{e.stopPropagation();deleteWire(w.id);});
+
+    // qty pill at bezier midpoint — in svg-pills so pointer-events work
+    const qty = w.qty != null ? w.qty : 1;
+    const mid = bezierMid(a,b);
+    const qtyStr = qty % 1 === 0 ? String(qty) : parseFloat(qty.toFixed(3)).toString();
+    const PW = Math.max(26, qtyStr.length * 7 + 14);
+    const PH = 18, PR = 9;
+
+    const pill = document.createElementNS('http://www.w3.org/2000/svg','g');
+    pill.setAttribute('transform',`translate(${mid.x},${mid.y})`);
+    pill.classList.add('qty-pill');
+    pill.dataset.wid = w.id;
+    pill.style.pointerEvents='all';
+
+    const rect=document.createElementNS('http://www.w3.org/2000/svg','rect');
+    rect.setAttribute('x',-PW/2); rect.setAttribute('y',-PH/2);
+    rect.setAttribute('width',PW); rect.setAttribute('height',PH);
+    rect.setAttribute('rx',PR); rect.setAttribute('ry',PR);
+    rect.setAttribute('fill','#12131a'); rect.setAttribute('stroke','#3d9eff');
+    rect.setAttribute('stroke-width','1.5');
+    pill.appendChild(rect);
+
+    const txt=document.createElementNS('http://www.w3.org/2000/svg','text');
+    txt.setAttribute('text-anchor','middle'); txt.setAttribute('dominant-baseline','middle');
+    txt.setAttribute('font-size','10'); txt.setAttribute('font-family',"'IBM Plex Mono',monospace");
+    txt.setAttribute('fill','#a0c8ff'); txt.setAttribute('pointer-events','none');
+    txt.textContent = qtyStr;
+    pill.appendChild(txt);
+
+    pill.addEventListener('click',e=>{e.stopPropagation();editWireQty(w.id,mid);});
+    svgP.appendChild(pill);
+  });
+}
+
+function makePath(d,cls){
+  const p=document.createElementNS('http://www.w3.org/2000/svg','path');
+  p.setAttribute('d',d); p.setAttribute('fill','none');
+  if(cls) p.classList.add(cls);
+  return p;
+}
+
+function curvePath(a,b){
+  const dx=Math.max(Math.abs(b.x-a.x)*0.5,60);
+  return `M${a.x} ${a.y} C${a.x+dx} ${a.y} ${b.x-dx} ${b.y} ${b.x} ${b.y}`;
+}
+
+// Evaluate a cubic bezier at t=0.5 to get the true midpoint
+function bezierMid(a,b){
+  const dx=Math.max(Math.abs(b.x-a.x)*0.5,60);
+  const c1x=a.x+dx, c1y=a.y, c2x=b.x-dx, c2y=b.y;
+  const t=0.5, u=1-t;
+  return {
+    x: u*u*u*a.x + 3*u*u*t*c1x + 3*u*t*t*c2x + t*t*t*b.x,
+    y: u*u*u*a.y + 3*u*u*t*c1y + 3*u*t*t*c2y + t*t*t*b.y
+  };
+}
+
+const wireStyle=document.createElement('style');
+wireStyle.textContent=`
+  .wire{stroke-width:2;opacity:.75;transition:opacity .12s,stroke-width .12s;}
+  .wire.whov{stroke-width:3;opacity:1;stroke:#ff6b8a!important;}
+  .wire-drawing{stroke-width:2;stroke-dasharray:6 4;opacity:.9;animation:da .5s linear infinite;}
+  @keyframes da{to{stroke-dashoffset:-10;}}
+  .qty-pill{cursor:pointer;}
+  .qty-pill:hover rect{fill:#1e2030;stroke:#7ab8ff;}
+  .qty-pill-input{background:transparent;border:none;outline:none;width:100%;color:#e8f4ff;font-family:'IBM Plex Mono',monospace;font-size:10px;text-align:center;padding:0;-moz-appearance:textfield;}
+  .qty-pill-input::-webkit-inner-spin-button,.qty-pill-input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
+`;
+document.head.appendChild(wireStyle);
+
+function editWireQty(wid, mid){
+  const w=getWire(wid); if(!w) return;
+  const svgP=document.getElementById('svg-pills');
+
+  // Find the pill group for this wire and swap text→foreignObject
+  const pill=svgP.querySelector(`[data-wid="${wid}"]`);
+  if(!pill) return;
+  const rect=pill.querySelector('rect');
+  const txt =pill.querySelector('text');
+  if(!txt) return;
+
+  // Highlight pill border while editing
+  rect.setAttribute('stroke','#f7c948');
+  txt.style.display='none';
+
+  const PW=parseFloat(rect.getAttribute('width'));
+  const PH=parseFloat(rect.getAttribute('height'));
+
+  const fo=document.createElementNS('http://www.w3.org/2000/svg','foreignObject');
+  fo.setAttribute('x',-PW/2); fo.setAttribute('y',-PH/2);
+  fo.setAttribute('width',PW); fo.setAttribute('height',PH);
+  pill.appendChild(fo);
+
+  const inp=document.createElement('input');
+  inp.type='number'; inp.min='0'; inp.step='any';
+  inp.className='qty-pill-input';
+  inp.style.height=PH+'px'; inp.style.lineHeight=PH+'px';
+  inp.value=w.qty||1;
+  fo.appendChild(inp);
+
+  // Small delay so the pill click doesn't immediately blur
+  setTimeout(()=>{inp.focus();inp.select();},10);
+
+  let committed=false;
+  function commit(){
+    if(committed) return; committed=true;
+    const v=parseFloat(inp.value);
+    if(!isNaN(v)&&v>0) w.qty=v;
+    renderWires(); updateBOM();
+  }
+  function cancel(){
+    if(committed) return; committed=true;
+    renderWires();
+  }
+  inp.addEventListener('blur', commit);
+  inp.addEventListener('keydown',e=>{
+    if(e.key==='Enter'){e.preventDefault();commit();}
+    if(e.key==='Escape'){e.preventDefault();cancel();}
+    e.stopPropagation();
+  });
+}
+
+// wire tooltip
+function showWireTip(a,b){
+  const tip=document.getElementById('wire-del-tip');
+  tip.style.left=((a.x+b.x)/2)+'px';
+  tip.style.top=((a.y+b.y)/2)+'px';
+  tip.style.display='block';
+}
+function hideWireTip(){document.getElementById('wire-del-tip').style.display='none';}
+
+let _nodeTipId = null;
+const TOOLTIP_ZOOM_THRESHOLD = 0.4;
+function showNodeTip(nd, e){
+  _nodeTipId = nd.id;
+  const tip=document.getElementById('node-tip');
+  document.getElementById('nt-pn').textContent  = nd.pn   || '';
+  document.getElementById('nt-name').textContent = nd.name || nd.pn || '';
+  tip.style.display='block';
+  moveNodeTip(e);
+}
+function moveNodeTip(e){
+  const tip=document.getElementById('node-tip');
+  if(tip.style.display==='none') return;
+  const tw=tip.offsetWidth, th=tip.offsetHeight;
+  let x=e.clientX+14, y=e.clientY-10;
+  if(x+tw>window.innerWidth-8)  x=e.clientX-tw-14;
+  if(y+th>window.innerHeight-8) y=e.clientY-th-10;
+  tip.style.left=x+'px'; tip.style.top=y+'px';
+}
+function hideNodeTip(){
+  document.getElementById('node-tip').style.display='none';
+  _nodeTipId = null;
+}
+
+// ─────────────────────────────────────────────
+// DRAG NODES
+// ─────────────────────────────────────────────
+function startDrag(e,id){
+  dragging=id;
+  const nd=getNode(id);
+  const wp=toWorld(e.clientX, e.clientY-46);
+  dOff.x=wp.x-nd.x; dOff.y=wp.y-nd.y;
+  nd.zi=++NID+100;
+  document.getElementById('node-'+id).style.zIndex=nd.zi;
+}
+
+// ─────────────────────────────────────────────
+// WIRE DRAWING  (drag from RIGHT port)
+// ─────────────────────────────────────────────
+function startWireDraw(e,id){
+  const nd=getNode(id);
+  const from=portPos(nd,'R');
+  const svgW=document.getElementById('svg-wires');
+  const p=makePath('','wire-drawing');
+  p.setAttribute('stroke','#f7c948');
+  svgW.appendChild(p);
+  wireDrawing={fromId:id, from, path:p};
+  document.querySelector(`#node-${id} .pdot.R`)?.classList.add('act');
+  document.body.style.cursor='crosshair';
+}
+
+function updateWireDraw(wx,wy){
+  if(!wireDrawing) return;
+  wireDrawing.path.setAttribute('d', curvePath(wireDrawing.from,{x:wx,y:wy}));
+}
+
+function finishWireDraw(toId){
+  if(!wireDrawing) return;
+  const fromId=wireDrawing.fromId;
+  cancelWireDraw();
+  if(fromId!==toId){
+    // fromId dragged from RIGHT (parent side), toId received on LEFT (children side)
+    // wire goes: fromId.R → toId.L  meaning fromId is the CHILD, toId is the PARENT
+    addWire(fromId, toId);
+    renderAll(); updateStatus(); updateBOM();
+  }
+}
+
+function cancelWireDraw(){
+  if(!wireDrawing) return;
+  wireDrawing.path.remove();
+  document.querySelector(`#node-${wireDrawing.fromId} .pdot.R`)?.classList.remove('act');
+  wireDrawing=null;
+  document.body.style.cursor='';
+}
+
+// ─────────────────────────────────────────────
+// SELECT / COLLAPSE / DELETE
+// ─────────────────────────────────────────────
+function selectNode(id){
+  selNode=id;
+  document.querySelectorAll('.node').forEach(n=>n.classList.toggle('sel',n.id==='node-'+id));
+}
+
+function toggleCollapse(id){
+  const nd=getNode(id); nd.collapsed=!nd.collapsed;
+  const el=document.getElementById('node-'+id);
+  if(el){
+    el.classList.toggle('collapsed',nd.collapsed);
+    el.querySelectorAll('.nbtn')[0].textContent=nd.collapsed?'⊞':'⊟';
+    el.querySelector('.ncsm').style.display=nd.collapsed?'block':'none';
+    el.querySelector('.nbody').style.display=nd.collapsed?'none':'block';
+  }
+  dimDesc(id,nd.collapsed);
+  renderWires();
+}
+function dimDesc(id,dim){
+  wires.filter(w=>w.fn===id).forEach(w=>{
+    document.getElementById('node-'+w.tn)?.classList.toggle('dim',dim);
+    dimDesc(w.tn,dim);
+  });
+}
+function collapseAll(){nodes.forEach(n=>{n.collapsed=true;});renderAll();}
+function expandAll(){nodes.forEach(n=>{n.collapsed=false;});renderAll();}
+
+function deleteNode(id){
+  nodes=nodes.filter(n=>n.id!==id);
+  wires=wires.filter(w=>w.fn!==id&&w.tn!==id);
+  if(selNode===id) selNode=null;
+  if(insId===id) closeIns();
+  renderAll(); updateStatus(); updateBOM();
+}
+
+let _delPendingId = null;
+
+function smartDelete(id){
+  const nd = getNode(id); if(!nd) return;
+  const childWires  = wires.filter(w=>w.tn===id);  // wires coming IN (children)
+  const parentWires = wires.filter(w=>w.fn===id);  // wires going OUT (parents)
+
+  // Simple case: no children, or no parents — just delete
+  if(!childWires.length || !parentWires.length){
+    deleteNode(id); return;
+  }
+
+  // Complex case: has both children and parents — show dialog
+  _delPendingId = id;
+  const parents = parentWires.map(w=>getNode(w.tn)).filter(Boolean);
+
+  document.getElementById('del-title').textContent = 'Delete ' + (nd.name||nd.pn||'Component');
+
+  const childNames = childWires.map(w=>{
+    const c=getNode(w.fn); return c?(c.pn||c.name):'?';
+  });
+
+  let html = `<p>Deleting <span class="del-nd">${esc(nd.name||nd.pn)}</span> will disconnect <strong>${childWires.length}</strong> child connection${childWires.length!==1?'s':''}:</p>`;
+  html += `<div style="font-size:11px;color:var(--dim);font-family:'IBM Plex Mono',monospace;margin-bottom:12px;line-height:1.8">${childNames.map(n=>`· ${esc(n)}`).join('<br>')}</div>`;
+
+  if(parents.length === 1){
+    html += `<p>You can reconnect the children directly to <span class="del-nd">${esc(parents[0].name||parents[0].pn)}</span>, or abandon the connections.</p>`;
+    html += `<input type="hidden" id="del-par-single" value="${parents[0].id}">`;
+    document.getElementById('del-reconnect').style.display='';
+  } else {
+    html += `<div class="del-section">Reconnect children to which parents?</div>`;
+    parents.forEach(p=>{
+      html += `<div class="del-parent-row">
+        <input type="checkbox" id="delp-${p.id}" value="${p.id}" checked>
+        <label for="delp-${p.id}">${esc(p.name||p.pn)}<span class="del-pn">${esc(p.pn||'')}</span></label>
+      </div>`;
+    });
+    html += `<p style="margin-top:10px;font-size:11px;color:var(--dim)">Uncheck all to abandon connections.</p>`;
+    document.getElementById('del-reconnect').style.display='';
+  }
+
+  document.getElementById('del-body').innerHTML = html;
+  document.getElementById('del-bg').classList.add('open');
+}
+
+function closeDelModal(){
+  document.getElementById('del-bg').classList.remove('open');
+  _delPendingId = null;
+}
+
+function confirmDelete(reconnect){
+  const id = _delPendingId; if(!id) return;
+  closeDelModal();
+
+  const childWires  = wires.filter(w=>w.tn===id);
+  const parentWires = wires.filter(w=>w.fn===id);
+
+  if(reconnect){
+    // Determine which parent IDs to reconnect to
+    let targetParentIds = [];
+    const singleInp = document.getElementById('del-par-single');
+    if(singleInp){
+      targetParentIds = [parseInt(singleInp.value)];
+    } else {
+      document.querySelectorAll('[id^="delp-"]:checked').forEach(cb=>{
+        targetParentIds.push(parseInt(cb.value));
+      });
+    }
+    // For each target parent, connect all children
+    targetParentIds.forEach(pid=>{
+      const parentWire = parentWires.find(w=>w.tn===pid);
+      childWires.forEach(cw=>{
+        // Inherit qty from the deleted node's wire to this parent (or child's wire qty)
+        const qty = parentWire ? parentWire.qty : cw.qty;
+        addWire(cw.fn, pid, qty);
+      });
+    });
+  }
+
+  deleteNode(id);
+}
+function deleteWire(id){
+  hideWireTip();
+  wires=wires.filter(w=>w.id!==id);
+  renderAll(); updateStatus(); updateBOM();
+}
+function clearAll(){
+  if(!confirm('Reset all components and connections?')) return;
+  nodes=[]; wires=[]; NID=0; WID=0; selNode=null; insId=null;
+  closeIns(); renderAll(); updateStatus(); updateBOM();
+}
+
+// ─────────────────────────────────────────────
+// INSPECTOR
+// ─────────────────────────────────────────────
+function openIns(id){
+  insId=id; const nd=getNode(id);
+  document.getElementById('ins-title').textContent=nd.name;
+  // Build per-parent qty rows
+  const parentWires=wires.filter(w=>w.fn===id);
+  const qtySection = parentWires.length
+    ? `<div class="fg"><div class="fl">Quantity per Assembly</div>
+        ${parentWires.map(w=>{
+          const par=getNode(w.tn);
+          return `<div style="display:grid;grid-template-columns:1fr auto;align-items:center;gap:8px;margin-bottom:6px;">
+            <div style="font-size:10px;color:var(--dim);font-family:'IBM Plex Mono',monospace;">${par?(par.pn||par.name):w.tn}<br><span style="color:var(--text);font-size:10px;">${par?(par.name||''):'unknown'}</span></div>
+            <input class="fi wire-qty-inp" data-wid="${w.id}" type="number" min="0" step="0.001" value="${w.qty||1}" style="width:70px;">
+          </div>`;
+        }).join('')}
+      </div>`
+    : `<div class="fg"><div class="fl">Quantity</div><input class="fi" type="number" id="i-qty" value="${nd.qty||1}" min="0" step="0.001"></div>`;
+
+  document.getElementById('ins-body').innerHTML=`
+    <div class="fg"><div class="fl">Name</div><input class="fi" id="i-name" value="${esc(nd.name)}"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="fg"><div class="fl">Part Number</div><input class="fi" id="i-pn" value="${esc(nd.pn||'')}"></div>
+      <div class="fg"><div class="fl">Revision</div><input class="fi" id="i-rev" value="${esc(nd.rev||'')}"></div>
+    </div>
+    ${qtySection}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="fg"><div class="fl">Unit</div>
+        <select class="fi" id="i-unit">${['ea','kg','g','mg','m','mm','cm','L','mL','ft','in','lot'].map(u=>`<option${nd.unit===u?' selected':''}>${u}</option>`).join('')}</select></div>
+      <div class="fg"><div class="fl">Cost/Unit ($)</div><input class="fi" type="number" id="i-cost" value="${nd.cost||''}" min="0" step="0.01"></div>
+      <div class="fg"><div class="fl">Lead Time (d)</div><input class="fi" type="number" id="i-lead" value="${nd.lead||''}" min="0"></div>
+    </div>
+    <div class="fg"><div class="fl">Type</div><div class="tgrid" id="i-tgrid"></div></div>
+    <div class="fg"><div class="fl">Supplier</div><input class="fi" id="i-sup" value="${esc(nd.supplier||'')}"></div>
+    <div class="fg"><div class="fl">Notes</div><textarea class="fi" id="i-notes">${esc(nd.notes||'')}</textarea></div>`;
+  buildTGrid('i-tgrid',nd.type,()=>{});
+  document.getElementById('ins').classList.add('open');
+}
+function closeIns(){document.getElementById('ins').classList.remove('open');insId=null;}
+function saveIns(){
+  if(!insId) return; const nd=getNode(insId);
+  nd.name=document.getElementById('i-name').value.trim()||nd.name;
+  nd.pn  =document.getElementById('i-pn').value.trim();
+  nd.rev =document.getElementById('i-rev').value.trim();
+  nd.unit=document.getElementById('i-unit').value;
+  nd.cost=parseFloat(document.getElementById('i-cost').value)||0;
+  nd.lead=parseInt(document.getElementById('i-lead').value)||0;
+  nd.supplier=document.getElementById('i-sup').value.trim();
+  nd.notes=document.getElementById('i-notes').value.trim();
+  const s=document.querySelector('#i-tgrid .topt.sel');
+  if(s) nd.type=s.dataset.type;
+  // Save per-wire qtys
+  document.querySelectorAll('.wire-qty-inp').forEach(inp=>{
+    const w=getWire(parseInt(inp.dataset.wid));
+    if(w){ const v=parseFloat(inp.value); if(!isNaN(v)&&v>0) w.qty=v; }
+  });
+  // Legacy single qty fallback
+  const legacyQty=document.getElementById('i-qty');
+  if(legacyQty) nd.qty=parseFloat(legacyQty.value)||1;
+  document.getElementById('ins-title').textContent=nd.name;
+  renderAll(); updateBOM();
+}
+function delInsNode(){if(insId){closeIns();smartDelete(insId);}}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+// ─────────────────────────────────────────────
+// TYPE GRID
+// ─────────────────────────────────────────────
+function buildTGrid(cid,cur,cb){
+  const c=document.getElementById(cid); if(!c) return; c.innerHTML='';
+  TYPES.forEach(t=>{
+    const d=document.createElement('div');
+    d.className='topt'+(t.id===cur?' sel':'');
+    d.dataset.type=t.id; d.style.color=t.color;
+    d.innerHTML=`<div class="tdot" style="background:${t.color}"></div>${t.label}`;
+    d.onclick=()=>{c.querySelectorAll('.topt').forEach(x=>x.classList.remove('sel'));d.classList.add('sel');mType=t.id;cb(t.id);};
+    c.appendChild(d);
+  });
+}
+
+// ─────────────────────────────────────────────
+// MODAL
+// ─────────────────────────────────────────────
+function openModal(spawn){
+  modalSpawn=spawn||null; mType='finished';
+  ['m-name','m-pn','m-rev','m-sup','m-notes'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  document.getElementById('m-qty').value=1;
+  document.getElementById('m-unit').value='ea';
+  document.getElementById('m-cost').value='';
+  document.getElementById('m-lead').value='';
+  buildTGrid('m-tgrid','finished',t=>{mType=t;});
+  document.getElementById('m-title').textContent='Add Component';
+  document.getElementById('m-ok').textContent='Add Component';
+  document.getElementById('mbg').classList.add('open');
+  setTimeout(()=>document.getElementById('m-name').focus(),40);
+}
+function closeModal(){document.getElementById('mbg').classList.remove('open');}
+function confirmModal(){
+  const name=document.getElementById('m-name').value.trim();
+  if(!name){document.getElementById('m-name').focus();return;}
+  const r=document.getElementById('wrap').getBoundingClientRect();
+  const wc=toWorld(r.width/2,r.height/2);
+  const pos=modalSpawn||{x:wc.x-118,y:wc.y-65};
+  addNode({
+    name, type:mType,
+    pn: document.getElementById('m-pn').value.trim(),
+    rev:document.getElementById('m-rev').value.trim(),
+    qty:parseFloat(document.getElementById('m-qty').value)||1,
+    unit:document.getElementById('m-unit').value,
+    cost:parseFloat(document.getElementById('m-cost').value)||0,
+    lead:parseInt(document.getElementById('m-lead').value)||0,
+    supplier:document.getElementById('m-sup').value.trim(),
+    notes:document.getElementById('m-notes').value.trim(),
+    x:pos.x, y:pos.y,
+  });
+  closeModal(); renderAll(); updateStatus(); updateBOM();
+}
+
+// ─────────────────────────────────────────────
+// CONTEXT MENU
+// ─────────────────────────────────────────────
+function showCtx(x,y){const m=document.getElementById('ctx');m.style.display='block';m.style.left=x+'px';m.style.top=y+'px';}
+function hideCtx(){document.getElementById('ctx').style.display='none';}
+function ctxDo(a){
+  hideCtx(); if(!ctxNode) return;
+  if(a==='edit') openIns(ctxNode);
+  if(a==='focus') enterFocus(ctxNode);
+  if(a==='dup'){const nd=getNode(ctxNode);if(nd)addNode({...nd,x:nd.x+24,y:nd.y+24});renderAll();updateStatus();updateBOM();}
+  if(a==='col') toggleCollapse(ctxNode);
+  if(a==='del') smartDelete(ctxNode);
+}
+
+// ─────────────────────────────────────────────
+// FOCUS MODE
+// ─────────────────────────────────────────────
+let focusNodeId = null;
+
+function getFocusSubtree(rootId){
+  // Returns set of all node ids in the subtree rooted at rootId
+  // (rootId + all descendants — nodes that feed INTO rootId recursively)
+  const ids = new Set();
+  function walk(id){
+    if(ids.has(id)) return;
+    ids.add(id);
+    wires.filter(w=>w.tn===id).forEach(w=>walk(w.fn));
+  }
+  walk(rootId);
+  return ids;
+}
+
+function enterFocus(id){
+  focusNodeId = id;
+  const subtree = getFocusSubtree(id);
+
+  // Apply classes
+  document.querySelectorAll('.node').forEach(el=>{
+    const nid = parseInt(el.id.replace('node-',''));
+    if(subtree.has(nid)){
+      el.classList.add('focus-active');
+      el.classList.remove('focus-dim');
+    } else {
+      el.classList.add('focus-dim');
+      el.classList.remove('focus-active');
+    }
+  });
+
+  document.getElementById('focus-bar').classList.add('visible');
+
+  // Update search box to show focused node name
+  const nd = getNode(id);
+  if(nd) document.getElementById('focus-search').value = nd.name || nd.pn || '';
+
+  // Fit view to subtree
+  fitFocusView(subtree);
+}
+
+function fitFocusView(subtree){
+  const wrap = document.getElementById('wrap').getBoundingClientRect();
+  const PAD = 80, H = 130;
+  const subtreeNodes = [...subtree].map(id=>getNode(id)).filter(Boolean);
+  if(!subtreeNodes.length) return;
+  const xs = subtreeNodes.map(n=>n.x);
+  const ys = subtreeNodes.map(n=>n.y);
+  const x0 = Math.min(...xs)-PAD, y0 = Math.min(...ys)-PAD;
+  const x1 = Math.max(...xs)+NODE_W+PAD, y1 = Math.max(...ys)+H+PAD;
+  const ns = Math.min(wrap.width/(x1-x0), wrap.height/(y1-y0), SMAX);
+  scale = Math.max(SMIN, ns);
+  panX = wrap.width/2 - ((x0+x1)/2)*scale;
+  panY = wrap.height/2 - ((y0+y1)/2)*scale;
+  applyTx();
+}
+
+function exitFocus(){
+  focusNodeId = null;
+  document.querySelectorAll('.node').forEach(el=>{
+    el.classList.remove('focus-active','focus-dim');
+  });
+  document.getElementById('focus-bar').classList.remove('visible');
+  document.getElementById('focus-search').value = '';
+}
+
+// ── Focus search dropdown ──
+function getFocusableNodes(){
+  // Only nodes that have children (i.e. are assemblies/parents)
+  return nodes.filter(nd => wires.some(w=>w.tn===nd.id));
+}
+
+function openFocusDropdown(){
+  const inp = document.getElementById('focus-search');
+  inp.select(); // select all text so user can type immediately
+  renderFocusDropdown(inp.value);
+  document.getElementById('focus-dropdown').classList.add('open');
+}
+function closeFocusDropdown(){
+  document.getElementById('focus-dropdown').classList.remove('open');
+}
+function filterFocusDropdown(){
+  renderFocusDropdown(document.getElementById('focus-search').value);
+  document.getElementById('focus-dropdown').classList.add('open');
+}
+function renderFocusDropdown(query){
+  const dd = document.getElementById('focus-dropdown');
+  const q = (query||'').toLowerCase().trim();
+  const all = getFocusableNodes().slice().sort((a,b)=>(a.name||a.pn||'').localeCompare(b.name||b.pn||''));
+
+  let html = '';
+
+  if(q){
+    const matches = all.filter(nd=>
+      (nd.name||'').toLowerCase().includes(q) ||
+      (nd.pn||'').toLowerCase().includes(q)
+    );
+    if(matches.length){
+      html += `<div class="fd-section-label">Results</div>`;
+      html += matches.map(nd=>`
+        <div class="fd-item" onmousedown="selectFocusNode(${nd.id})">
+          <span class="fd-name">${nd.name||nd.pn}</span>
+          <span class="fd-pn">${nd.pn||''}</span>
+        </div>`).join('');
+    } else {
+      html += '<div class="fd-empty">No matches</div>';
+    }
+    // Always show full list below with a divider
+    html += `<div class="fd-divider"></div><div class="fd-section-label">All assemblies</div>`;
+    html += all.map(nd=>`
+      <div class="fd-item" onmousedown="selectFocusNode(${nd.id})">
+        <span class="fd-name">${nd.name||nd.pn}</span>
+        <span class="fd-pn">${nd.pn||''}</span>
+      </div>`).join('');
+  } else {
+    // No query — just show full alphabetical list
+    if(!all.length){ dd.innerHTML='<div class="fd-empty">No assemblies found</div>'; return; }
+    html += `<div class="fd-section-label">All assemblies</div>`;
+    html += all.map(nd=>`
+      <div class="fd-item" onmousedown="selectFocusNode(${nd.id})">
+        <span class="fd-name">${nd.name||nd.pn}</span>
+        <span class="fd-pn">${nd.pn||''}</span>
+      </div>`).join('');
+  }
+
+  dd.innerHTML = html;
+}
+function selectFocusNode(id){
+  closeFocusDropdown();
+  enterFocus(id);
+}
+function focusSearchKey(e){
+  if(e.key==='Escape'){ exitFocus(); document.getElementById('focus-search').blur(); }
+  if(e.key==='Enter'){
+    const first = getFocusableNodes().find(nd=>{
+      const q=(document.getElementById('focus-search').value||'').toLowerCase();
+      return (nd.name||'').toLowerCase().includes(q)||(nd.pn||'').toLowerCase().includes(q);
+    });
+    if(first){ closeFocusDropdown(); enterFocus(first.id); }
+  }
+}
+
+// ─────────────────────────────────────────────
+// BOM TABLE
+// ─────────────────────────────────────────────
+function bomRows(){
+  const rows=[],vis=new Set();
+  function walk(id,lv,parentId){
+    if(vis.has(id))return; vis.add(id);
+    const nd=getNode(id); if(!nd)return;
+    const wire=parentId!=null ? wires.find(w=>w.fn===id&&w.tn===parentId) : null;
+    rows.push({nd,lv,wire});
+    wires.filter(w=>w.tn===id).forEach(w=>walk(w.fn,lv+1,id));
+  }
+  nodes.filter(nd=>!wires.some(w=>w.fn===nd.id)).forEach(nd=>walk(nd.id,0,null));
+  nodes.forEach(nd=>{if(!vis.has(nd.id))rows.push({nd,lv:0,wire:null});});
+  return rows;
+}
+function toggleBOM(){bomOpen=!bomOpen;document.getElementById('bomp').classList.toggle('open',bomOpen);if(bomOpen)updateBOM();}
+function updateBOM(){
+  const rows=bomRows();
+  document.getElementById('btbody').innerHTML=rows.map(({nd,lv,wire})=>{
+    const ti=TI(nd.type);
+    const indent=`<span style="display:inline-block;width:${lv*14}px"></span>`;
+    const qty = wire ? (wire.qty||1) : (nd.qty||1);
+    const ext=nd.cost>0&&qty>0?'$'+(nd.cost*qty).toFixed(2):'—';
+    return `<tr>
+      <td style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--dim);text-align:center">${lv}</td>
+      <td style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--dim)">${nd.pn||'—'}</td>
+      <td style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted)">${nd.rev||'—'}</td>
+      <td>${indent}<span style="font-size:11px">${nd.name}</span></td>
+      <td><span class="bbadge" style="background:${ti.color}22;color:${ti.color}">${ICONS[nd.type]||''} ${ti.label}</span></td>
+      <td style="text-align:right;font-family:'IBM Plex Mono',monospace;font-weight:600">${qty}</td>
+      <td style="font-size:10px;color:var(--dim)">${nd.unit}</td>
+      <td style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:10px">${nd.cost>0?'$'+(+nd.cost).toFixed(2):'—'}</td>
+      <td style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#f7c948">${ext}</td>
+      <td style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:10px">${nd.lead||'—'}</td>
+      <td style="font-size:10px;color:var(--dim)">${nd.supplier||'—'}</td>
+      <td style="font-size:10px;color:var(--dim);max-width:160px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${nd.notes||''}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('bcnt').textContent=rows.length+' item'+(rows.length!==1?'s':'');
+}
+
+// ─────────────────────────────────────────────
+// CSV EXPORT  (Assembly / Component / Quantity / Notes / LineNumber)
+// Matches the Ring Rescue BOM format exactly
+// ─────────────────────────────────────────────
+function exportCSV(){
+  const q=v=>{
+    const s=String(v??'');
+    return (s.includes(',')||s.includes('"')||s.includes('\n'))
+      ? `"${s.replace(/"/g,'""')}"` : s;
+  };
+  const lines=[['Assembly','Component','Quantity','Notes','LineNumber'].map(q).join(',')];
+
+  // Walk parents in BOM order (roots first, depth-first)
+  const emitted=new Set();
+  function emitAssembly(parentId){
+    if(emitted.has(parentId)) return;
+    emitted.add(parentId);
+    const parent=getNode(parentId);
+    if(!parent) return;
+    const childWires=wires.filter(w=>w.tn===parentId);
+    if(!childWires.length) return;
+    childWires.forEach((w,i)=>{
+      const child=getNode(w.fn); if(!child) return;
+      lines.push([
+        i===0 ? (parent.pn||parent.name) : '',
+        child.pn||child.name,
+        w.qty||1,
+        child.notes||'',
+        i+1
+      ].map(q).join(','));
+    });
+    lines.push(''); // blank separator between assemblies
+    childWires.forEach(w=>emitAssembly(w.fn));
+  }
+
+  // Start from top-level nodes (no outgoing wire = no parent)
+  nodes.filter(nd=>!wires.some(w=>w.fn===nd.id)).forEach(nd=>emitAssembly(nd.id));
+  // Catch any remaining disconnected assemblies
+  nodes.filter(nd=>wires.some(w=>w.tn===nd.id)).forEach(nd=>emitAssembly(nd.id));
+
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([lines.join('\r\n')],{type:'text/csv'}));
+  a.download='BOM_Export.csv'; a.click(); URL.revokeObjectURL(a.href);
+}
+
+// ─────────────────────────────────────────────
+// CSV IMPORT
+// Accepts: Assembly, Component, Quantity, Notes, LineNumber
+// Assembly col is blank on continuation rows (same assembly)
+// ─────────────────────────────────────────────
+function importCSV(input){
+  const file=input.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=evt=>{
+    try{
+      parseAndLoadCSV(evt.target.result);
+    }catch(err){
+      alert('Error importing CSV:\n'+err.message);
+      console.error(err);
+    }
+    input.value=''; // allow re-import of same file
+  };
+  reader.readAsText(file);
+}
+
+function parseCSVLine(line){
+  const out=[];let cur='',inQ=false;
+  for(let i=0;i<line.length;i++){
+    const c=line[i];
+    if(c==='"'&&!inQ){inQ=true;}
+    else if(c==='"'&&inQ&&line[i+1]==='"'){cur+='"';i++;}
+    else if(c==='"'&&inQ){inQ=false;}
+    else if(c===','&&!inQ){out.push(cur.trim());cur='';}
+    else cur+=c;
+  }
+  out.push(cur.trim());
+  return out;
+}
+
+function parseAndLoadCSV(text){
+  const rawLines=text.split(/\r?\n/);
+  const rows=rawLines.map(parseCSVLine).filter(r=>r.some(c=>c));
+
+  // Skip header if present
+  let dataRows=rows;
+  const h=rows[0]?.map(c=>c.toLowerCase().trim())||[];
+  if(h[0]==='assembly'||h[1]==='component') dataRows=rows.slice(1);
+
+  // Ask user whether to replace or append
+  const replace=!nodes.length||confirm('Replace current diagram with imported BOM?\n\nOK = Replace, Cancel = Append');
+  if(replace){ nodes=[]; wires=[]; NID=0; WID=0; }
+
+  // Build part number → node id map (include existing nodes for append)
+  const nodeMap={};
+  nodes.forEach(nd=>{ if(nd.pn) nodeMap[nd.pn]=nd.id; });
+
+  function ensureNode(pn){
+    if(!pn) return null;
+    if(nodeMap[pn]) return nodeMap[pn];
+    const id=addNode({
+      name:pn, pn, rev:'', type:'purchased',
+      qty:1, unit:'ea', cost:0, lead:0,
+      supplier:'', notes:'', x:0, y:0
+    });
+    nodeMap[pn]=id;
+    return id;
+  }
+
+  let currentAssembly=null;
+  dataRows.forEach(row=>{
+    const assemblyCol=(row[0]||'').trim();
+    const compCol    =(row[1]||'').trim();
+    const qtyCol     =(row[2]||'').trim();
+    const notesCol   =(row[3]||'').trim();
+
+    if(assemblyCol) currentAssembly=assemblyCol;
+    if(!compCol||!currentAssembly) return;
+
+    const parentId=ensureNode(currentAssembly);
+    const childId =ensureNode(compCol);
+    if(parentId===null||childId===null||parentId===childId) return;
+
+    // Update notes on child node (qty now lives on wire)
+    const childNd=getNode(childId);
+    if(childNd){ if(notesCol) childNd.notes=notesCol; }
+    const wireQty=parseFloat(qtyCol)||1;
+    addWire(childId, parentId, wireQty); // fn=child, tn=parent
+  });
+
+  // Auto-type nodes based on role in graph
+  nodes.forEach(nd=>{
+    const isParent=wires.some(w=>w.tn===nd.id);
+    const isChild =wires.some(w=>w.fn===nd.id);
+    if(!isChild && isParent)  nd.type='finished';
+    else if(isChild && isParent) nd.type='assembly';
+    else if(!isChild && !isParent) nd.type='purchased';
+    // leaves stay as 'purchased' unless manually changed
+  });
+
+  renderThenLayout();
+}
+
+// ─────────────────────────────────────────────
+// AUTO LAYOUT  (funnel tree: roots right, leaves fan left)
+//
+// Strategy: two-pass column-cursor layout.
+//   Pass 1 (leaves→roots): compute the "natural" pixel height each
+//          subtree needs if packed tightly — using real DOM heights.
+//   Pass 2 (roots→leaves): place each node, then place its children
+//          starting at max(colCursor[childCol], parentMidY - subtreeH/2).
+//          This keeps children visually close to their parent while
+//          the per-column cursor prevents any overlap.
+//
+// COL_W is then solved so totalWidth ≈ totalHeight (±20%).
+// ─────────────────────────────────────────────
+function autoLayout(){
+  if(!nodes.length) return;
+
+  const PAD_Y      = 20;
+  const ROOT_GAP   = 60;
+  const NODE_W_EST = 260;
+  const MARGIN     = 40;
+
+  function nodeH(id){
+    const el = document.getElementById('node-'+id);
+    return el ? el.offsetHeight : 130;
+  }
+
+  // ── 1. Build maps ──
+  const childrenOf = {};
+  const parentsOf  = {};
+  nodes.forEach(nd => { childrenOf[nd.id] = []; parentsOf[nd.id] = []; });
+  wires.forEach(w => {
+    if(childrenOf[w.tn]) childrenOf[w.tn].push(w.fn);
+    if(parentsOf[w.fn])  parentsOf[w.fn].push(w.tn);
+  });
+
+  // ── 2. Roots & column depths ──
+  const roots = nodes.filter(nd => parentsOf[nd.id].length === 0);
+  if(!roots.length) return;
+
+  const colOf = {};
+  function assignCol(id, col){
+    if(colOf[id] !== undefined && colOf[id] >= col) return;
+    colOf[id] = col;
+    childrenOf[id].forEach(cid => assignCol(cid, col + 1));
+  }
+  roots.forEach(nd => assignCol(nd.id, 0));
+  nodes.forEach(nd => { if(colOf[nd.id] === undefined) colOf[nd.id] = 0; });
+  const maxCol = Math.max(0, ...Object.values(colOf));
+
+  // Only traverse into children that are strictly deeper (avoids back-edges in DAGs)
+  function deeperKids(id){
+    return childrenOf[id].filter(cid => colOf[cid] > colOf[id]);
+  }
+
+  // ── 3. Pass 1: compute packed subtree height (memoised per id) ──
+  // For shared nodes seen by multiple parents, height is counted once.
+  const subtreeH = {};
+  function calcH(id){
+    if(subtreeH[id] !== undefined) return subtreeH[id];
+    const kids = deeperKids(id);
+    if(!kids.length){
+      subtreeH[id] = nodeH(id);
+    } else {
+      const packed = kids.reduce((s,cid) => s + calcH(cid) + PAD_Y, -PAD_Y);
+      subtreeH[id] = Math.max(nodeH(id), packed);
+    }
+    return subtreeH[id];
+  }
+  roots.forEach(nd => calcH(nd.id));
+  nodes.forEach(nd => { if(subtreeH[nd.id] === undefined) subtreeH[nd.id] = nodeH(nd.id); });
+
+  // ── 4. Pass 2: top-down placement with per-column cursors ──
+  const assignedY  = {};
+  const colCursor  = {};   // next available Y in each column
+  const placed     = new Set();
+
+  function place(id, suggestedTopY){
+    if(placed.has(id)) return;
+    placed.add(id);
+
+    const col   = colOf[id];
+    const topY  = Math.max(suggestedTopY, colCursor[col] || MARGIN);
+    const h     = nodeH(id);
+    const sh    = subtreeH[id];
+    const kids  = deeperKids(id);
+
+    if(!kids.length){
+      assignedY[id] = topY;
+      colCursor[col] = topY + h + PAD_Y;
+      return;
+    }
+
+    // Centre this node over where its children will land
+    // Children start at topY (or their col cursor, whichever is later)
+    // We'll place children first, then centre the parent
+    const childCol    = Math.max(...kids.map(cid => colOf[cid]));
+    const childCursor = Math.max(colCursor[childCol] || MARGIN, topY);
+
+    // Place children packed from childCursor
+    let cursor = childCursor;
+    kids.forEach(cid => {
+      if(!placed.has(cid)){
+        place(cid, cursor);
+        cursor = (colCursor[colOf[cid]] || cursor);
+      }
+    });
+
+    // Find the actual Y span of placed children
+    const kidYs   = kids.filter(cid => assignedY[cid] !== undefined);
+    const kidTop  = Math.min(...kidYs.map(cid => assignedY[cid]));
+    const kidBot  = Math.max(...kidYs.map(cid => assignedY[cid] + nodeH(cid)));
+    const midY    = (kidTop + kidBot) / 2;
+
+    // Centre parent on children, but don't go above col cursor
+    const parentY = Math.max(colCursor[col] || MARGIN, midY - h / 2);
+    assignedY[id] = parentY;
+    colCursor[col] = Math.max(colCursor[col] || MARGIN, parentY + h + PAD_Y);
+  }
+
+  // Place roots one at a time with a gap between trees
+  let globalY = MARGIN;
+  roots.forEach(nd => {
+    // Seed the root's col cursor so trees don't overlap
+    colCursor[colOf[nd.id]] = Math.max(colCursor[colOf[nd.id]] || MARGIN, globalY);
+    place(nd.id, globalY);
+    // Advance globalY past this root tree
+    const rootBottom = (assignedY[nd.id] || globalY) + nodeH(nd.id);
+    globalY = Math.max(rootBottom + ROOT_GAP, (colCursor[colOf[nd.id]] || globalY) + ROOT_GAP - PAD_Y);
+  });
+
+  // ── 5. Measure actual vertical extent ──
+  const placed2   = nodes.filter(nd => assignedY[nd.id] !== undefined);
+  const minY      = Math.min(...placed2.map(nd => assignedY[nd.id]));
+  const maxYB     = Math.max(...placed2.map(nd => assignedY[nd.id] + nodeH(nd.id)));
+  const totalH    = maxYB - minY;
+
+  // ── 6. Solve COL_W for ~square aspect ratio (clamped 0.8–1.2) ──
+  const MIN_COL_W = NODE_W_EST * 1.4;
+  let colW;
+  if(maxCol === 0){
+    colW = MIN_COL_W;
+  } else {
+    const rawColW = (totalH           - NODE_W_EST - 2*MARGIN) / maxCol;
+    const minColW = Math.max(MIN_COL_W, (totalH*0.8 - NODE_W_EST - 2*MARGIN) / maxCol);
+    const maxColW =                      (totalH*1.2 - NODE_W_EST - 2*MARGIN) / maxCol;
+    colW = Math.max(minColW, Math.min(maxColW, rawColW));
+    colW = Math.max(colW, MIN_COL_W);
+  }
+
+  // ── 7. Apply positions ──
+  nodes.forEach(nd => {
+    nd.x = (maxCol - (colOf[nd.id]||0)) * colW + MARGIN;
+    nd.y = assignedY[nd.id] !== undefined ? assignedY[nd.id] : MARGIN;
+  });
+}
+
+// Run a render pass first so DOM heights are measurable, then layout, then re-render
+function renderThenLayout(cb){
+  renderAll(); // first pass — positions don't matter yet, just need DOM elements
+  requestAnimationFrame(()=>{
+    autoLayout();
+    renderAll(); updateStatus(); updateBOM();
+    setTimeout(()=>{ if(cb) cb(); fitView(); }, 40);
+  });
+}
+
+// ─────────────────────────────────────────────
+// SAVE HTML  (self-contained file, reopens with full state)
+// State is injected as a JSON script tag with a known id.
+// On load, init() detects it and restores instead of loading sample data.
+// ─────────────────────────────────────────────
+function saveHTML(){
+  const state=JSON.stringify({nodes, wires, NID, WID});
+  let html=document.documentElement.outerHTML;
+
+  // Remove any previously injected state tag (escaped to avoid parser confusion)
+  const openTag='<'+'script id="__saved_state__"';
+  const closeTag='<'+'/script>';
+  const re=new RegExp(openTag.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'[\\s\\S]*?'+closeTag.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'));
+  html=html.replace(re,'');
+
+  // Inject state just before </body>
+  const stateTag=openTag+' type="application/json">'+state+closeTag;
+  html=html.replace('</body>', stateTag+'\n</body>');
+
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([html],{type:'text/html'}));
+  a.download='BOMflow_saved.html';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function openSubEditor(){
+  if(!focusNodeId) return;
+  const rootNd = getNode(focusNodeId); if(!rootNd) return;
+
+  // Extract subtree nodes and wires
+  const subtreeIds = getFocusSubtree(focusNodeId);
+  const subNodes = nodes.filter(n=>subtreeIds.has(n.id));
+  const subWires = wires.filter(w=>subtreeIds.has(w.fn)&&subtreeIds.has(w.tn));
+
+  // Re-index IDs starting from 1 so the sub-editor is self-contained
+  const idMap = {};
+  subNodes.forEach((n,i)=>{ idMap[n.id]=i+1; });
+  const remappedNodes = subNodes.map(n=>({...n, id:idMap[n.id], zi:idMap[n.id]+10}));
+  const remappedWires = subWires.map((w,i)=>({...w, id:i+1, fn:idMap[w.fn], tn:idMap[w.tn]}));
+  const newNID = remappedNodes.length;
+  const newWID = remappedWires.length;
+
+  const subState = JSON.stringify({nodes:remappedNodes, wires:remappedWires, NID:newNID, WID:newWID});
+
+  // Build the sub-editor HTML from the current page source
+  const openTag='<'+'script id="__saved_state__"';
+  const closeTag='<'+'/script>';
+  const stateRe=new RegExp(openTag.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'[\\s\\S]*?'+closeTag.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'));
+  let html=document.documentElement.outerHTML;
+  html=html.replace(stateRe,''); // strip any existing saved state
+
+  // Inject sub-state and a title marker
+  const stateTag=openTag+' type="application/json">'+subState+closeTag;
+  // Update <title> to reflect the sub-assembly name
+  html=html.replace(/<title>[^<]*<\/title>/, `<title>BOMflow — ${rootNd.name||rootNd.pn}</title>`);
+  html=html.replace('</body>', stateTag+'\n</body>');
+
+  // Open in new tab via Blob URL
+  const url=URL.createObjectURL(new Blob([html],{type:'text/html'}));
+  const tab=window.open(url,'_blank');
+  // Revoke after a delay so the tab has time to load
+  setTimeout(()=>URL.revokeObjectURL(url), 30000);
+  if(!tab) alert('Pop-up blocked — please allow pop-ups for this page and try again.');
+}
+
+// ─────────────────────────────────────────────
+// FIT VIEW
+// ─────────────────────────────────────────────
+function fitView(){
+  if(!nodes.length){panX=0;panY=0;scale=1;applyTx();return;}
+  const r=document.getElementById('wrap').getBoundingClientRect();
+  const PAD=70,H=130;
+  const xs=nodes.map(n=>n.x),ys=nodes.map(n=>n.y);
+  const x0=Math.min(...xs)-PAD, y0=Math.min(...ys)-PAD;
+  const x1=Math.max(...xs)+NODE_W+PAD, y1=Math.max(...ys)+H+PAD;
+  const ns=Math.min(r.width/(x1-x0),r.height/(y1-y0),SMAX);
+  scale=Math.max(SMIN,ns);
+  panX=r.width/2-((x0+x1)/2)*scale;
+  panY=r.height/2-((y0+y1)/2)*scale;
+  applyTx();
+}
+
+// ─────────────────────────────────────────────
+// STATUS
+// ─────────────────────────────────────────────
+function updateStatus(){
+  document.getElementById('s-nodes').textContent=nodes.length;
+  document.getElementById('s-wires').textContent=wires.length;
+}
+
+// ─────────────────────────────────────────────
+// EVENTS
+// ─────────────────────────────────────────────
+function setupEvents(){
+  const wrap=document.getElementById('wrap');
+
+  document.addEventListener('mousemove',e=>{
+    if(dragging!==null){
+      const nd=getNode(dragging);
+      const wp=toWorld(e.clientX,e.clientY-46);
+      nd.x=wp.x-dOff.x; nd.y=wp.y-dOff.y;
+      const el=document.getElementById('node-'+dragging);
+      if(el){el.style.left=nd.x+'px';el.style.top=nd.y+'px';}
+      renderWires();
+      return;
+    }
+    if(panning){
+      panX+=e.clientX-panStart.x; panY+=e.clientY-panStart.y;
+      panStart={x:e.clientX,y:e.clientY};
+      applyTx(); return;
+    }
+    if(wireDrawing){
+      const wp=toWorld(e.clientX,e.clientY-46);
+      updateWireDraw(wp.x,wp.y);
+    }
+    // Node tooltip: show on hover when zoomed out, using world-space hit test
+    if(scale < TOOLTIP_ZOOM_THRESHOLD && !dragging && !panning && !wireDrawing){
+      const tip=document.getElementById('node-tip');
+      if(tip.matches(':hover')) return; // cursor is on the tooltip itself — leave it
+      const wp=toWorld(e.clientX, e.clientY-46);
+      const hit=nodes.find(nd=>{
+        const el=document.getElementById('node-'+nd.id);
+        const h=el?el.offsetHeight:130;
+        return wp.x>=nd.x && wp.x<=nd.x+NODE_W && wp.y>=nd.y && wp.y<=nd.y+h;
+      });
+      if(hit){
+        if(_nodeTipId!==hit.id) showNodeTip(hit, e);
+        else moveNodeTip(e);
+      } else {
+        hideNodeTip();
+      }
+    }
+  });
+
+  document.addEventListener('mouseup',()=>{
+    dragging=null;
+    if(panning){panning=false;wrap.classList.remove('panning');}
+    if(wireDrawing) cancelWireDraw();
+  });
+
+  wrap.addEventListener('mousedown',e=>{
+    const onBg=e.target===wrap||e.target.id==='world'||e.target.id==='svg-wires'||e.target.id==='svg-hit'||e.target.id==='svg-pills';
+    const onNode=!!e.target.closest('.node');
+    const onPort=!!e.target.closest('.pdot');
+    const onBtn=!!e.target.closest('.nbtn');
+    // Pan: middle-click anywhere, or space+drag anywhere, or left-drag on non-node canvas areas
+    if(e.button===1||(e.button===0&&(spaceDown||onBg)&&!onPort)){
+      panning=true; panStart={x:e.clientX,y:e.clientY};
+      wrap.classList.add('panning'); e.preventDefault();
+    }
+    if(e.button===0&&onBg){selNode=null;document.querySelectorAll('.node.sel').forEach(n=>n.classList.remove('sel'));}
+  });
+
+  wrap.addEventListener('dblclick',e=>{
+    const onBg=e.target===wrap||e.target.id==='world'||e.target.id==='empty';
+    if(onBg){
+      const wp=toWorld(e.clientX,e.clientY-46);
+      openModal({x:wp.x-118,y:wp.y-65});
+    }
+  });
+
+  wrap.addEventListener('wheel',e=>{
+    e.preventDefault();
+    const r=wrap.getBoundingClientRect();
+    setZoom(scale*(e.deltaY<0?1.1:0.91), e.clientX-r.left, e.clientY-r.top);
+  },{passive:false});
+
+  document.addEventListener('keydown',e=>{
+    if(e.code==='Space'&&!e.target.closest('input,textarea,select')){spaceDown=true;e.preventDefault();}
+    if(e.code==='Escape'){cancelWireDraw();closeModal();closeDelModal();hideCtx();if(focusNodeId)exitFocus();}
+    if(e.key==='Enter'&&document.getElementById('mbg').classList.contains('open')&&!e.target.closest('textarea')) confirmModal();
+    if((e.code==='Delete'||e.code==='Backspace')&&selNode&&!e.target.closest('input,textarea,select')) smartDelete(selNode);
+    if((e.key==='='||e.key==='+')&&!e.target.closest('input,textarea')) setZoom(scale*1.15);
+    if(e.key==='-'&&!e.target.closest('input,textarea')) setZoom(scale*0.87);
+    if(e.key==='0'&&!e.target.closest('input,textarea')) fitView();
+  });
+  document.addEventListener('keyup',e=>{if(e.code==='Space')spaceDown=false;});
+  wrap.addEventListener('contextmenu',e=>{
+    e.preventDefault();
+    // At low zoom, try world-space hit test so right-click works on small nodes
+    if(scale < TOOLTIP_ZOOM_THRESHOLD){
+      const wp=toWorld(e.clientX, e.clientY-46);
+      const hit=nodes.find(nd=>{
+        const el=document.getElementById('node-'+nd.id);
+        const h=el?el.offsetHeight:130;
+        return wp.x>=nd.x && wp.x<=nd.x+NODE_W && wp.y>=nd.y && wp.y<=nd.y+h;
+      });
+      if(hit){ ctxNode=hit.id; showCtx(e.clientX,e.clientY); return; }
+    }
+    hideCtx();
+  });
+  document.addEventListener('click',e=>{if(!e.target.closest('#ctx'))hideCtx();});
+}
+
+// ─────────────────────────────────────────────
+// CSV IMPORT MODAL  (Items + BOMs)
+// ─────────────────────────────────────────────
+let pendingFiles = {items:null, boms:null};
+let filesLoaded  = {items:false, boms:false};
+let sosItems     = {}; // name → row, enrichment lookup
+
+function openCSVModal(){
+  pendingFiles = {items:null, boms:null};
+  filesLoaded  = {items:false, boms:false};
+  sosItems     = {};
+  ['items','boms'].forEach(w=>{
+    document.getElementById('dz-'+w).classList.remove('loaded','drag-over');
+    document.getElementById('dz-'+w+'-ok').style.display='none';
+    document.getElementById('dz-'+w+'-sub').style.display='block';
+    document.getElementById('err-'+w).style.display='none';
+  });
+  document.getElementById('csv-load-btn').disabled=true;
+  document.getElementById('csv-modal-bg').classList.add('open');
+}
+function closeCSVModal(){
+  document.getElementById('csv-modal-bg').classList.remove('open');
+}
+
+function handleFileSelect(which, input){
+  const file=input.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      if(which==='items') validateItemsCSV(e.target.result, file.name);
+      else                validateBomsCSV(e.target.result, file.name);
+    }catch(err){ showFileErr(which, err.message); }
+  };
+  reader.readAsText(file, 'windows-1252');
+}
+
+function parseCSVToObjects(text){
+  const lines=text.split(/\r?\n/);
+  const headers=parseCSVLine(lines[0]);
+  const rows=[];
+  for(let i=1;i<lines.length;i++){
+    const cols=parseCSVLine(lines[i]);
+    if(!cols.some(c=>c)) continue;
+    const obj={};
+    headers.forEach((h,j)=>{ obj[h.trim()]=cols[j]||''; });
+    rows.push(obj);
+  }
+  return {headers, rows};
+}
+
+function validateItemsCSV(text, fname){
+  const {headers, rows}=parseCSVToObjects(text);
+  // SOS Items2.csv uses Name, TypeOfItem, Cost etc.
+  const required=['Name'];
+  const missing=required.filter(h=>!headers.includes(h));
+  if(missing.length) throw new Error(`Missing columns: ${missing.join(', ')}`);
+  pendingFiles.items={text, fname, rows, headers};
+  filesLoaded.items=true;
+  document.getElementById('dz-items').classList.add('loaded');
+  document.getElementById('dz-items-ok').style.display='block';
+  document.getElementById('dz-items-ok').textContent=`✓ ${rows.length} items loaded from ${fname}`;
+  document.getElementById('dz-items-sub').style.display='none';
+  document.getElementById('err-items').style.display='none';
+  checkLoadReady();
+}
+
+function validateBomsCSV(text, fname){
+  const {headers, rows}=parseCSVToObjects(text);
+  const required=['Assembly','Component','Quantity'];
+  const missing=required.filter(h=>!headers.includes(h));
+  if(missing.length) throw new Error(`Missing columns: ${missing.join(', ')}`);
+  pendingFiles.boms={text, fname, rows, headers};
+  filesLoaded.boms=true;
+  document.getElementById('dz-boms').classList.add('loaded');
+  document.getElementById('dz-boms-ok').style.display='block';
+  const assemblies=new Set(rows.filter(r=>r.Assembly?.trim()).map(r=>r.Assembly.trim()));
+  document.getElementById('dz-boms-ok').textContent=`✓ ${rows.length} rows · ${assemblies.size} assemblies`;
+  document.getElementById('dz-boms-sub').style.display='none';
+  document.getElementById('err-boms').style.display='none';
+  checkLoadReady();
+}
+
+function showFileErr(which, msg){
+  const el=document.getElementById('err-'+which);
+  el.textContent='⚠ '+msg; el.style.display='block';
+  filesLoaded[which]=false; checkLoadReady();
+}
+
+function checkLoadReady(){
+  // Need at least BOMs to do anything useful
+  document.getElementById('csv-load-btn').disabled=!filesLoaded.boms;
+}
+
+function confirmCSVLoad(){
+  if(!filesLoaded.boms) return;
+
+  // Build sosItems lookup from items CSV if available
+  if(pendingFiles.items){
+    pendingFiles.items.rows.forEach(r=>{
+      if(r.Name) sosItems[r.Name.trim()]=r;
+    });
+  }
+
+  const replace=!nodes.length||confirm('Replace current diagram?\n\nOK = Replace, Cancel = Append');
+  if(replace){ nodes=[]; wires=[]; NID=0; WID=0; }
+
+  const nodeMap={};
+  nodes.forEach(nd=>{ if(nd.pn) nodeMap[nd.pn]=nd.id; });
+
+  function sosTypeToLocal(t){
+    if(!t) return 'purchased';
+    const tl=t.toLowerCase();
+    if(tl==='assembly') return 'assembly';
+    if(tl==='kit') return 'subassembly';
+    if(tl.includes('non-inventory')||tl.includes('non inventory')) return 'other';
+    return 'purchased';
+  }
+
+  function ensureNode(pn){
+    pn=pn.trim(); if(!pn) return null;
+    if(nodeMap[pn]!==undefined) return nodeMap[pn];
+    const item=sosItems[pn];
+    // SOS item name → pn, SOS description → display name
+    const id=addNode({
+      pn,
+      name: (item && (item.Description||item.SalesDescription||item.description)) ? (item.Description||item.SalesDescription||item.description) : pn,
+      rev:  '',
+      type: item ? sosTypeToLocal(item.TypeOfItem) : 'purchased',
+      qty:  1, unit:'ea',
+      cost: item ? (parseFloat(item.Cost)||parseFloat(item.PurchaseCost)||0) : 0,
+      lead: item ? (parseInt(item.LeadTime)||0) : 0,
+      supplier: item ? (item.PreferredVendor||item.Vendor||'') : '',
+      notes: item ? (item.Notes||'') : '',
+      x:0, y:0,
+    });
+    nodeMap[pn]=id;
+    return id;
+  }
+
+  let curAssembly=null;
+  pendingFiles.boms.rows.forEach(row=>{
+    const asm=(row.Assembly||'').trim();
+    const comp=(row.Component||'').trim();
+    const qty=parseFloat(row.Quantity)||1;
+    const notes=row.Notes||'';
+    if(asm) curAssembly=asm;
+    if(!comp||!curAssembly) return;
+    const parentId=ensureNode(curAssembly);
+    const childId=ensureNode(comp);
+    if(!parentId||!childId||parentId===childId) return;
+    const childNd=getNode(childId);
+    if(childNd){ if(notes) childNd.notes=notes; }
+    addWire(childId, parentId, qty);
+  });
+
+  // Promote types based on graph role
+  nodes.forEach(nd=>{
+    const isParent=wires.some(w=>w.tn===nd.id);
+    const isChild =wires.some(w=>w.fn===nd.id);
+    const item=sosItems[nd.pn];
+    if(item && item.TypeOfItem==='Assembly'){ nd.type=isChild?'subassembly':'assembly'; }
+    else if(!isChild&&isParent){ if(nd.type==='purchased'||nd.type==='other') nd.type='assembly'; }
+    else if(!isChild&&!isParent){ nd.type='purchased'; }
+  });
+
+  renderThenLayout(closeCSVModal);
+}
+
+// Wire up drag-over styling for both drop zones
+document.addEventListener('DOMContentLoaded', ()=>{
+  ['items','boms'].forEach(which=>{
+    const dz=document.getElementById('dz-'+which);
+    if(!dz) return;
+    dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag-over');});
+    dz.addEventListener('dragleave',()=>dz.classList.remove('drag-over'));
+    dz.addEventListener('drop',e=>{
+      e.preventDefault(); dz.classList.remove('drag-over');
+      const file=e.dataTransfer.files[0]; if(!file) return;
+      const reader=new FileReader();
+      reader.onload=ev=>{
+        try{
+          if(which==='items') validateItemsCSV(ev.target.result, file.name);
+          else                validateBomsCSV(ev.target.result, file.name);
+        }catch(err){ showFileErr(which, err.message); }
+      };
+      reader.readAsText(file,'windows-1252');
+    });
+  });
+});
+
+// ─────────────────────────────────────────────
+// SOS INVENTORY INTEGRATION  (read-only)
+// Naming convention:
+//   SOS item.name        → BOMflow nd.pn   (part number, monospace top line)
+//   SOS item.description → BOMflow nd.name (display name, bold white)
+// ─────────────────────────────────────────────
+const SOS_BASE = 'https://api.sosinventory.com/api/v2';
+
+function openSOSModal(){
+  document.getElementById('sos-modal-bg').style.display='flex';
+  document.getElementById('sos-status').textContent='';
+  setTimeout(()=>document.getElementById('sos-token').focus(),40);
+}
+function closeSOSModal(){
+  document.getElementById('sos-modal-bg').style.display='none';
+}
+
+function sosStatus(msg, color='var(--dim)'){
+  const el=document.getElementById('sos-status');
+  el.style.color=color;
+  el.textContent=msg;
+}
+
+async function sosGet(endpoint, token){
+  const res=await fetch(`${SOS_BASE}${endpoint}`,{
+    headers:{
+      'Authorization': `Bearer ${token}`,
+      'Host': 'api.sosinventory.com'
+    }
+  });
+  if(!res.ok) throw new Error(`SOS API error ${res.status}: ${res.statusText}`);
+  return res.json();
+}
+
+async function loadFromSOS(){
+  const token=(document.getElementById('sos-token').value||'').trim();
+  const filter=(document.getElementById('sos-filter').value||'').trim().toLowerCase();
+  if(!token){sosStatus('⚠ Please enter an access token.','#f7c948');return;}
+
+  const btn=document.getElementById('sos-load-btn');
+  btn.disabled=true; btn.textContent='Loading…';
+
+  try{
+    // 1. Fetch all Assembly-type items (paginate up to 1000)
+    sosStatus('Fetching items from SOS…');
+    let allItems=[];
+    let start=1;
+    while(true){
+      const data=await sosGet(`/item?type=Assembly&maxresults=200&start=${start}&summary`,token);
+      if(!data.data||!data.data.length) break;
+      allItems=allItems.concat(data.data);
+      if(allItems.length>=data.totalCount) break;
+      start+=200;
+      await new Promise(r=>setTimeout(r,550)); // respect 500ms throttle
+    }
+
+    // Also fetch non-assembly items to resolve BOM component names
+    sosStatus(`Found ${allItems.length} assemblies. Fetching component items…`);
+    let allOther=[];
+    start=1;
+    while(true){
+      const data=await sosGet(`/item?maxresults=200&start=${start}&summary`,token);
+      if(!data.data||!data.data.length) break;
+      allOther=allOther.concat(data.data);
+      if(allOther.length>=data.totalCount) break;
+      start+=200;
+      await new Promise(r=>setTimeout(r,550));
+    }
+
+    // Build id → item lookup
+    const itemById={};
+    [...allItems,...allOther].forEach(it=>{itemById[it.id]=it;});
+
+    // Apply name filter to assemblies
+    let assemblies=allItems;
+    if(filter) assemblies=allItems.filter(it=>(it.name||'').toLowerCase().includes(filter));
+    if(!assemblies.length){sosStatus('No matching assemblies found.','#ff6b8a');btn.disabled=false;btn.textContent='Load from SOS';return;}
+
+    // 2. Fetch BOM lines for each assembly (throttled)
+    sosStatus(`Fetching BOMs for ${assemblies.length} assemblies…`);
+    const bomByAssemblyId={};
+    for(let i=0;i<assemblies.length;i++){
+      const it=assemblies[i];
+      sosStatus(`Fetching BOM ${i+1}/${assemblies.length}: ${it.name}`);
+      try{
+        const bomData=await sosGet(`/item/${it.id}/bom`,token);
+        if(bomData.data && bomData.data.lines) bomByAssemblyId[it.id]=bomData.data.lines;
+      }catch(e){console.warn('BOM fetch failed for',it.name,e);}
+      if(i<assemblies.length-1) await new Promise(r=>setTimeout(r,550));
+    }
+
+    // 3. Build BOMflow nodes and wires
+    const replace=!nodes.length||confirm('Replace current diagram with data from SOS?\n\nOK = Replace, Cancel = Append');
+    if(replace){nodes=[];wires=[];NID=0;WID=0;}
+
+    const pnToId={}; // SOS item name (= BOMflow pn) → node id
+    nodes.forEach(nd=>{if(nd.pn)pnToId[nd.pn]=nd.id;});
+
+    function sosTypeToLocal(sosType){
+      if(!sosType) return 'other';
+      const t=sosType.toLowerCase();
+      if(t==='assembly') return 'assembly';
+      if(t==='inventory item') return 'purchased';
+      if(t==='non-inventory') return 'purchased';
+      if(t==='kit') return 'subassembly';
+      return 'other';
+    }
+
+    function ensureSosNode(sosItem){
+      // SOS item.name → pn, SOS item.description → display name
+      const pn=sosItem.name||String(sosItem.id);
+      if(pnToId[pn]!==undefined) return pnToId[pn];
+      const id=addNode({
+        pn,
+        name: sosItem.description||sosItem.name||pn,
+        rev: '',
+        type: sosTypeToLocal(sosItem.type),
+        qty: 1, unit:'ea',
+        cost: sosItem.purchaseCost||sosItem.basePurchaseCost||0,
+        lead: sosItem.leadTime||0,
+        supplier: sosItem.vendor ? sosItem.vendor.name : '',
+        notes: sosItem.notes||'',
+        sosId: sosItem.id,
+        x:0, y:0,
+      });
+      pnToId[pn]=id;
+      return id;
+    }
+
+    // Create assembly nodes
+    assemblies.forEach(it=>ensureSosNode(it));
+
+    // Create component nodes and wires from BOM lines
+    assemblies.forEach(it=>{
+      const lines=bomByAssemblyId[it.id]||[];
+      const parentId=pnToId[it.name];
+      lines.forEach(line=>{
+        if(!line.componentItem) return;
+        const compSosItem=itemById[line.componentItem.id]||{
+          id:line.componentItem.id,
+          name:line.componentItem.name,
+          description:line.description||line.componentItem.name,
+          type:line.typeOfItem||'Inventory Item',
+        };
+        const childId=ensureSosNode(compSosItem);
+        const childNd=getNode(childId);
+        if(childNd){
+          if(line.notes) childNd.notes=line.notes;
+          if(line.cost) childNd.cost=line.cost;
+        }
+        if(parentId!==undefined && childId!==parentId) addWire(childId, parentId, line.quantity||1);
+      });
+    });
+
+    // Auto-type nodes based on graph position
+    nodes.forEach(nd=>{
+      if(nd.sosId) return; // keep SOS type if we have full item data
+      const isParent=wires.some(w=>w.tn===nd.id);
+      const isChild =wires.some(w=>w.fn===nd.id);
+      if(!isChild&&isParent) nd.type='finished';
+      else if(isChild&&isParent) nd.type='assembly';
+    });
+
+    renderThenLayout();
+
+    sosStatus(`✓ Loaded ${nodes.length} items from SOS.`,'var(--cr)');
+    // Update button state
+    document.getElementById('sos-btn').style.color='var(--cr)';
+    document.getElementById('sos-btn').style.borderColor='var(--cr)33';
+    document.getElementById('sos-btn').textContent='⬡ SOS Connected';
+    setTimeout(closeSOSModal, 1200);
+
+  }catch(err){
+    sosStatus('✗ '+err.message,'#ff6b8a');
+    console.error('SOS load error',err);
+  }finally{
+    btn.disabled=false; btn.textContent='Load from SOS';
+  }
+}
+
+init();
+</script>
+</body>
+</html>
