@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <title>BOM Flow</title>
+<script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
 *{margin:0;padding:0;box-sizing:border-box;}
@@ -248,9 +249,27 @@ select.fi{cursor:pointer;}
 #empty .ei{font-size:50px;opacity:.05;}
 #empty p{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.7;}
 #empty code{font-family:'IBM Plex Mono',monospace;font-size:10px;background:var(--panel);padding:1px 5px;border-radius:3px;color:var(--cf);}
+
+/* ── AUTH GATE ── */
+#auth-gate{position:fixed;inset:0;background:#0e0f16;display:flex;align-items:center;justify-content:center;z-index:9999;}
+#auth-gate.hidden{display:none;}
+.ag-box{text-align:center;}
+.ag-logo{font-family:'IBM Plex Mono',monospace;font-size:26px;font-weight:600;color:#3d9eff;letter-spacing:2px;margin-bottom:6px;}
+.ag-logo span{color:#6b6f8a;font-weight:400;}
+.ag-sub{font-size:11px;color:#6b6f8a;margin-bottom:28px;letter-spacing:.5px;}
+.ag-btn{padding:9px 28px;background:#3d9eff;border:none;border-radius:6px;color:#fff;font-family:'IBM Plex Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;letter-spacing:.3px;}
+.ag-btn:hover{background:#6ab4ff;}
 </style>
 </head>
 <body>
+
+<div id="auth-gate">
+  <div class="ag-box">
+    <div class="ag-logo">BOM<span>flow</span></div>
+    <div class="ag-sub">Visual BOM Editor</div>
+    <button class="ag-btn" id="signin-btn">Sign In</button>
+  </div>
+</div>
 
 <div id="topbar">
   <div class="logo">BOM<span>flow</span></div>
@@ -2233,6 +2252,31 @@ async function loadFromSOS(){
 }
 
 init();
+</script>
+
+<script>
+// ── NETLIFY IDENTITY AUTH GATE ──
+window.addEventListener('load', function(){
+  const gate = document.getElementById('auth-gate');
+  const btn  = document.getElementById('signin-btn');
+
+  function unlock(){
+    gate.classList.add('hidden');
+  }
+
+  netlifyIdentity.on('init', function(user){
+    if(user) unlock();
+  });
+
+  netlifyIdentity.on('login', function(user){
+    netlifyIdentity.close();
+    unlock();
+  });
+
+  btn.addEventListener('click', function(){ netlifyIdentity.open('login'); });
+
+  netlifyIdentity.init();
+});
 </script>
 </body>
 </html>
