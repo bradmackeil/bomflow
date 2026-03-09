@@ -302,6 +302,7 @@ select.fi{cursor:pointer;}
   <div class="tr">
     <div id="zdsp">100%</div>
     <span style="font-size:10px;color:var(--muted);font-family:'IBM Plex Mono',monospace">Scroll=zoom · Space+drag=pan · Drag red→green to connect · Click wire to delete</span>
+    <button class="tb" id="logout-btn" style="margin-left:8px;color:var(--dim);" onclick="doLogout()">⎋ Sign Out</button>
   </div>
 </div>
 
@@ -2269,7 +2270,13 @@ init();
   const err   = document.getElementById('ag-err');
 
   function unlock(){ gate.classList.add('hidden'); }
+  function lock()  { gate.classList.remove('hidden'); }
   function showErr(){ err.style.display = 'block'; input.value = ''; input.focus(); }
+
+  window.doLogout = function(){
+    localStorage.removeItem(TOKEN_KEY);
+    lock();
+  };
 
   async function checkExistingToken(){
     const token = localStorage.getItem(TOKEN_KEY);
@@ -2283,7 +2290,6 @@ init();
       if(data.valid) unlock();
       else localStorage.removeItem(TOKEN_KEY);
     } catch(e) {
-      // Network error — fail open so dev mode still works locally
       console.warn('Auth check failed', e);
     }
   }
