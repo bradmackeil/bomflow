@@ -16,20 +16,43 @@
 }
 body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--text);overflow:hidden;height:100vh;width:100vw;user-select:none;}
 
-/* ── TOPBAR ── */
-#topbar{position:fixed;inset:0 0 auto 0;height:46px;background:rgba(18,19,26,.97);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 14px;gap:6px;z-index:1000;backdrop-filter:blur(10px);isolation:isolate;}
-.logo{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;color:var(--cf);letter-spacing:1.5px;margin-right:10px;}
-.logo span{color:var(--dim);font-weight:400;}
+/* ── TOPBAR (legacy, kept for BOM panel buttons) ── */
 .tb{display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:5px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:11px;font-family:'IBM Plex Sans',sans-serif;font-weight:500;cursor:pointer;transition:all .12s;white-space:nowrap;}
 .tb:hover{border-color:var(--cf);color:var(--cf);}
-.tb.pri{background:var(--cf);border-color:var(--cf);color:#fff;}
-.tb.pri:hover{background:#6ab4ff;}
-.sep{width:1px;height:22px;background:var(--border);margin:0 2px;}
-.tr{margin-left:auto;display:flex;align-items:center;gap:6px;}
-#zdsp{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--dim);background:var(--panel2);border:1px solid var(--border);border-radius:4px;padding:3px 7px;min-width:44px;text-align:center;}
+#zdsp{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--cf);font-weight:600;}
+
+/* ── SIDEBAR ── */
+#sidebar{position:fixed;left:0;top:0;bottom:22px;width:200px;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:100;overflow:hidden;}
+#sb-logo{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;color:var(--cf);letter-spacing:1.5px;padding:12px 14px 10px;border-bottom:1px solid var(--border);flex-shrink:0;}
+#sb-logo span{color:var(--dim);font-weight:400;}
+#sb-cmd-section{padding:8px 10px;border-bottom:1px solid var(--border);flex-shrink:0;position:relative;}
+#sb-cmd{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--cf);font-family:'IBM Plex Mono',monospace;font-size:11px;padding:6px 10px;outline:none;transition:border-color .12s;box-sizing:border-box;}
+#sb-cmd:focus{border-color:var(--cf);}
+#sb-cmd::placeholder{color:var(--muted);}
+#sb-cmd-hint{font-size:9px;font-family:'IBM Plex Mono',monospace;color:var(--dim);margin-top:3px;min-height:11px;padding:0 2px;}
+#sb-picker{margin-top:6px;background:var(--bg);border:1px solid var(--border);border-radius:5px;overflow:visible;}
+#sb-picker-label{font-size:9px;font-family:'IBM Plex Mono',monospace;color:var(--ca);padding:5px 8px 2px;text-transform:uppercase;letter-spacing:.5px;}
+#sb-picker #focus-search-wrap{margin:0;padding:0 6px 6px;}
+#sb-picker #focus-search{width:100%;background:var(--panel2);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:11px;box-sizing:border-box;}
+#sb-picker #focus-dropdown{position:static;border:none;border-top:1px solid var(--border);border-radius:0 0 4px 4px;max-height:180px;box-shadow:none;}
+#sb-scroll{flex:1;overflow-y:auto;padding-bottom:4px;}
+#sb-scroll::-webkit-scrollbar{width:3px;}
+#sb-scroll::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+.sb-group{padding:8px 10px 2px;}
+.sb-group-label{font-size:9px;font-family:'IBM Plex Mono',monospace;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;padding:0 2px;}
+.sb-btn{width:100%;text-align:left;display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:5px;border:none;background:transparent;color:var(--dim);font-family:'IBM Plex Sans',sans-serif;font-size:11px;font-weight:500;cursor:pointer;transition:all .1s;margin-bottom:1px;}
+.sb-btn:hover{background:var(--panel2);color:var(--text);}
+.sb-btn.primary{color:var(--cf);}
+.sb-btn.primary:hover{background:rgba(61,158,255,.1);color:var(--cf);}
+.sb-btn.sos{color:var(--ca);}
+.sb-btn.sos:hover{background:rgba(247,201,72,.08);}
+.sb-icon{font-size:11px;width:15px;text-align:center;flex-shrink:0;font-family:'IBM Plex Mono',monospace;}
+#sb-footer{border-top:1px solid var(--border);padding:8px 10px;flex-shrink:0;}
+#sb-footer-meta{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}
+#sb-hint{font-size:8px;font-family:'IBM Plex Mono',monospace;color:var(--muted);line-height:1.4;}
 
 /* ── CANVAS ── */
-#wrap{position:fixed;top:46px;inset-inline:0;bottom:22px;overflow:hidden;background:#0e0f16;cursor:default;--dot-opacity:1;}
+#wrap{position:fixed;top:0;left:200px;right:0;bottom:22px;overflow:hidden;background:#0e0f16;cursor:default;--dot-opacity:1;}
 #wrap.panning{cursor:grabbing!important;}
 #wrap::before{content:'';position:absolute;inset:0;background-image:radial-gradient(circle,#1e1f2e 1px,transparent 1px);background-size:28px 28px;pointer-events:none;opacity:var(--dot-opacity);transition:opacity .2s;}
 
@@ -112,7 +135,7 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 #node-tip .nt-name{font-size:12px;color:var(--text);line-height:1.3;}
 
 /* ── INSPECTOR ── */
-#ins{position:fixed;right:0;top:46px;bottom:22px;width:280px;background:var(--panel);border-left:1px solid var(--border);display:none;flex-direction:column;z-index:50;}
+#ins{position:fixed;right:0;top:0;bottom:22px;width:280px;background:var(--panel);border-left:1px solid var(--border);display:none;flex-direction:column;z-index:50;}
 #ins.open{display:flex;}
 .ins-h{padding:12px 16px 10px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
 .ins-h h3{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--dim);}
@@ -140,7 +163,7 @@ select.fi{cursor:pointer;}
 .bdel:hover{background:rgba(255,107,107,.15);border-color:#ff6b8a;color:#ff6b8a;}
 
 /* ── BOM PANEL ── */
-#bomp{position:fixed;inset-inline:0;bottom:22px;background:var(--panel);border-top:1px solid var(--border);transition:transform .25s;transform:translateY(100%);z-index:60;}
+#bomp{position:fixed;left:200px;right:0;bottom:22px;background:var(--panel);border-top:1px solid var(--border);transition:transform .25s;transform:translateY(100%);z-index:60;}
 #bomp.open{transform:translateY(0);}
 .bh{padding:6px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);}
 .bh h3{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--dim);cursor:pointer;}
@@ -211,7 +234,7 @@ select.fi{cursor:pointer;}
 /* ── FOCUS MODE ── */
 .node.focus-active{z-index:45!important;box-shadow:0 0 0 2px rgba(247,201,72,.8),0 0 24px rgba(247,201,72,.3),0 4px 20px rgba(0,0,0,.5)!important;opacity:1!important;transition:opacity .25s,box-shadow .25s;}
 .node.focus-dim{opacity:.08!important;transition:opacity .25s;}
-#focus-bar{position:fixed;top:56px;left:50%;transform:translateX(-50%);display:none;align-items:center;gap:6px;z-index:200;}
+#focus-bar{position:fixed;top:10px;left:calc(50% + 100px);transform:translateX(-50%);display:none;align-items:center;gap:6px;z-index:200;}
 #focus-bar.visible{display:flex;}
 #focus-exit,#focus-open-editor{background:rgba(26,27,38,.92);border:1px solid rgba(247,201,72,.5);color:#f7c948;font-size:11px;font-family:'IBM Plex Mono',monospace;padding:5px 14px;border-radius:20px;cursor:pointer;backdrop-filter:blur(6px);white-space:nowrap;user-select:none;}
 #focus-exit:hover{background:rgba(247,201,72,.15);}
@@ -276,33 +299,59 @@ select.fi{cursor:pointer;}
   </div>
 </div>
 
-<div id="topbar">
-  <div class="logo">BOM<span>flow</span></div>
-  <div class="sep"></div>
-  <button class="tb pri" onclick="openModal()">＋ Add Component</button>
-  <button class="tb" onclick="openCSVModal()">⬆ Import CSV</button>
-  <div class="sep"></div>
-  <button class="tb" onclick="collapseAll()">⊟ Collapse All</button>
-  <button class="tb" onclick="expandAll()">⊞ Expand All</button>
-  <div class="sep"></div>
-  <button class="tb" onclick="toggleBOM()">📋 BOM Table</button>
-  <button class="tb" onclick="fitView()">⊡ Fit View</button>
-  <button class="tb" onclick="setZoom(1)">1:1</button>
-  <div class="sep"></div>
-  <button class="tb" id="sos-btn" onclick="openSOSModal()" style="color:#f7c948;border-color:#f7c94833">⬡ SOS Connect</button>
-  <div class="sep"></div>
-  <button class="tb" onclick="saveHTML()" style="color:#5ec47a;border-color:#5ec47a22">💾 Save</button>
-  <button class="tb" onclick="clearAll()" style="color:var(--dim)">↺ Reset</button>
-  <div class="sep"></div>
-  <div id="focus-search-wrap">
-    <input id="focus-search" type="text" placeholder="🔍 Focus assembly…" oninput="filterFocusDropdown()" onfocus="openFocusDropdown()" onblur="setTimeout(closeFocusDropdown,150)" onkeydown="focusSearchKey(event)">
-    <span id="focus-search-icon">▾</span>
-    <div id="focus-dropdown"></div>
+<div id="sidebar">
+  <div id="sb-logo">BOM<span>flow</span></div>
+
+  <!-- Command bar -->
+  <div id="sb-cmd-section">
+    <input id="sb-cmd" type="text" placeholder="> command…" autocomplete="off" spellcheck="false"
+      onkeydown="sbCmdKey(event)" oninput="sbCmdInput(event)">
+    <div id="sb-cmd-hint"></div>
+    <div id="sb-picker" style="display:none">
+      <div id="sb-picker-label">Select component</div>
+      <div id="focus-search-wrap">
+        <input id="focus-search" type="text" placeholder="filter…"
+          oninput="filterFocusDropdown()" onfocus="openFocusDropdown()"
+          onblur="setTimeout(closeFocusDropdown,150)" onkeydown="focusSearchKey(event)">
+        <span id="focus-search-icon">▾</span>
+        <div id="focus-dropdown"></div>
+      </div>
+    </div>
   </div>
-  <div class="tr">
-    <div id="zdsp">100%</div>
-    <span style="font-size:10px;color:var(--muted);font-family:'IBM Plex Mono',monospace">Scroll=zoom · Space+drag=pan · Drag red→green to connect · Click wire to delete</span>
-    <button class="tb" style="margin-left:8px;color:var(--dim);" onclick="doLogout()">⎋ Sign Out</button>
+
+  <!-- Tool groups -->
+  <div id="sb-scroll">
+    <div class="sb-group">
+      <div class="sb-group-label">Components</div>
+      <button class="sb-btn primary" onclick="openModal()"><span class="sb-icon">＋</span>Add Component</button>
+      <button class="sb-btn" onclick="openCSVModal()"><span class="sb-icon">⬆</span>Import CSV</button>
+    </div>
+    <div class="sb-group">
+      <div class="sb-group-label">View</div>
+      <button class="sb-btn" onclick="collapseAll()"><span class="sb-icon">⊟</span>Collapse All</button>
+      <button class="sb-btn" onclick="expandAll()"><span class="sb-icon">⊞</span>Expand All</button>
+      <button class="sb-btn" onclick="fitView()"><span class="sb-icon">⊡</span>Fit View</button>
+      <button class="sb-btn" onclick="setZoom(1)"><span class="sb-icon">1:1</span>Reset Zoom</button>
+    </div>
+    <div class="sb-group">
+      <div class="sb-group-label">Data</div>
+      <button class="sb-btn" onclick="toggleBOM()"><span class="sb-icon">▤</span>BOM Table</button>
+      <button class="sb-btn" onclick="saveHTML()" style="color:var(--cr)"><span class="sb-icon">↓</span>Save</button>
+    </div>
+    <div class="sb-group">
+      <div class="sb-group-label">Integrations</div>
+      <button class="sb-btn sos" onclick="openSOSModal()"><span class="sb-icon">⬡</span>SOS Connect</button>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div id="sb-footer">
+    <div id="sb-footer-meta">
+      <div id="zdsp">100%</div>
+      <div id="sb-hint">scroll=zoom<br>space+drag=pan</div>
+    </div>
+    <button class="sb-btn" onclick="clearAll()"><span class="sb-icon">↺</span>Reset</button>
+    <button class="sb-btn" onclick="doLogout()"><span class="sb-icon">⎋</span>Sign Out</button>
   </div>
 </div>
 
@@ -521,6 +570,8 @@ let insId=null,bomOpen=false;
 
 // NODE_W must match CSS .node width
 const NODE_W=236;
+// SIDEBAR_W must match CSS #sidebar width
+const SIDEBAR_W=200;
 
 // ─────────────────────────────────────────────
 // UNDO
@@ -541,6 +592,72 @@ function undo(){
   nodes=s.nodes; wires=s.wires; NID=s.NID; WID=s.WID;
   selNode=null; insId=null; closeIns();
   renderAll(); updateStatus(); updateBOM();
+}
+
+// ─────────────────────────────────────────────
+// COMMAND SYSTEM
+// ─────────────────────────────────────────────
+const COMMANDS={};
+let _pendingCmd=null;
+
+function registerCommand(name, opts){
+  // opts: { description, aliases, needsTarget, getTargets, run }
+  COMMANDS[name.toLowerCase()]=opts;
+  if(opts.aliases) opts.aliases.forEach(a=>{ COMMANDS[a.toLowerCase()]=opts; });
+}
+
+function execCmd(raw){
+  const input=raw.trim();
+  if(!input) return;
+  const name=input.split(/\s+/)[0].toLowerCase();
+  const cmd=COMMANDS[name];
+  if(!cmd){ showCmdHint('Unknown: '+name+'. Type "help" for commands.'); return; }
+  if(cmd.needsTarget){
+    if(selNode){ cmd.run(selNode); clearCmd(); }
+    else { _pendingCmd=cmd; showCmdPicker(); }
+  } else {
+    cmd.run(); clearCmd();
+  }
+}
+
+function showCmdHint(msg){
+  document.getElementById('sb-cmd-hint').textContent=msg;
+}
+function clearCmd(){
+  document.getElementById('sb-cmd').value='';
+  document.getElementById('sb-cmd-hint').textContent='';
+}
+function showCmdPicker(){
+  const picker=document.getElementById('sb-picker');
+  picker.style.display='block';
+  const label=_pendingCmd&&_pendingCmd.pickerLabel ? _pendingCmd.pickerLabel : 'Select component';
+  document.getElementById('sb-picker-label').textContent=label;
+  const inp=document.getElementById('focus-search');
+  inp.value='';
+  renderFocusDropdown('');
+  document.getElementById('focus-dropdown').classList.add('open');
+  setTimeout(()=>inp.focus(),0);
+}
+function hideCmdPicker(){
+  document.getElementById('sb-picker').style.display='none';
+  document.getElementById('focus-dropdown').classList.remove('open');
+  _pendingCmd=null;
+}
+function sbCmdKey(e){
+  if(e.key==='Enter'){ e.preventDefault(); execCmd(e.target.value); }
+  if(e.key==='Escape'){ clearCmd(); hideCmdPicker(); e.target.blur(); }
+}
+function sbCmdInput(e){
+  // Live autocomplete hint
+  const v=e.target.value.toLowerCase().trim();
+  if(!v){ showCmdHint(''); return; }
+  const match=Object.keys(COMMANDS).find(k=>k.startsWith(v)&&COMMANDS[k]===COMMANDS[k]);
+  // Deduplicate (aliases point to same opts)
+  const seen=new Set();
+  const unique=Object.entries(COMMANDS).filter(([k,v])=>{ if(seen.has(v)) return false; seen.add(v); return k.startsWith(e.target.value.toLowerCase().trim()); });
+  if(unique.length===1){ showCmdHint(unique[0][0]+' — '+unique[0][1].description); }
+  else if(unique.length>1){ showCmdHint(unique.map(([k])=>k).join('  ')); }
+  else { showCmdHint(''); }
 }
 
 // ─────────────────────────────────────────────
@@ -926,7 +1043,7 @@ function startDrag(e,id){
   pushUndo();
   dragging=id;
   const nd=getNode(id);
-  const wp=toWorld(e.clientX, e.clientY-46);
+  const wp=toWorld(e.clientX-SIDEBAR_W, e.clientY);
   dOff.x=wp.x-nd.x; dOff.y=wp.y-nd.y;
   nd.zi=++NID+100;
   document.getElementById('node-'+id).style.zIndex=nd.zi;
@@ -1338,7 +1455,8 @@ function filterFocusDropdown(){
 function renderFocusDropdown(query){
   const dd = document.getElementById('focus-dropdown');
   const q = (query||'').toLowerCase().trim();
-  const all = getFocusableNodes().slice().sort((a,b)=>(a.name||a.pn||'').localeCompare(b.name||b.pn||''));
+  const src = _pendingCmd&&_pendingCmd.getTargets ? _pendingCmd.getTargets() : getFocusableNodes();
+  const all = src.slice().sort((a,b)=>(a.name||a.pn||'').localeCompare(b.name||b.pn||''));
 
   let html = '';
 
@@ -1379,16 +1497,25 @@ function renderFocusDropdown(query){
 }
 function selectFocusNode(id){
   closeFocusDropdown();
-  enterFocus(id);
+  if(_pendingCmd){ _pendingCmd.run(id); hideCmdPicker(); clearCmd(); }
+  else { enterFocus(id); }
 }
 function focusSearchKey(e){
-  if(e.key==='Escape'){ exitFocus(); document.getElementById('focus-search').blur(); }
+  if(e.key==='Escape'){
+    if(_pendingCmd){ hideCmdPicker(); return; }
+    exitFocus(); document.getElementById('focus-search').blur();
+  }
   if(e.key==='Enter'){
-    const first = getFocusableNodes().find(nd=>{
-      const q=(document.getElementById('focus-search').value||'').toLowerCase();
-      return (nd.name||'').toLowerCase().includes(q)||(nd.pn||'').toLowerCase().includes(q);
-    });
-    if(first){ closeFocusDropdown(); enterFocus(first.id); }
+    const q=(document.getElementById('focus-search').value||'').toLowerCase();
+    const src = _pendingCmd&&_pendingCmd.getTargets ? _pendingCmd.getTargets() : getFocusableNodes();
+    const first = src.find(nd=>
+      (nd.name||'').toLowerCase().includes(q)||(nd.pn||'').toLowerCase().includes(q)
+    );
+    if(first){
+      closeFocusDropdown();
+      if(_pendingCmd){ _pendingCmd.run(first.id); hideCmdPicker(); clearCmd(); }
+      else { enterFocus(first.id); }
+    }
   }
 }
 
@@ -1842,7 +1969,7 @@ function setupEvents(){
   document.addEventListener('mousemove',e=>{
     if(dragging!==null){
       const nd=getNode(dragging);
-      const wp=toWorld(e.clientX,e.clientY-46);
+      const wp=toWorld(e.clientX-SIDEBAR_W, e.clientY);
       nd.x=wp.x-dOff.x; nd.y=wp.y-dOff.y;
       const el=document.getElementById('node-'+dragging);
       if(el){el.style.left=nd.x+'px';el.style.top=nd.y+'px';}
@@ -1855,14 +1982,14 @@ function setupEvents(){
       applyTx(); return;
     }
     if(wireDrawing){
-      const wp=toWorld(e.clientX,e.clientY-46);
+      const wp=toWorld(e.clientX-SIDEBAR_W, e.clientY);
       updateWireDraw(wp.x,wp.y);
     }
     // Node tooltip: show on hover when zoomed out, using world-space hit test
     if(scale < TOOLTIP_ZOOM_THRESHOLD && !dragging && !panning && !wireDrawing){
       const tip=document.getElementById('node-tip');
       if(tip.matches(':hover')) return; // cursor is on the tooltip itself — leave it
-      const wp=toWorld(e.clientX, e.clientY-46);
+      const wp=toWorld(e.clientX-SIDEBAR_W, e.clientY);
       const hit=nodes.find(nd=>{
         const el=document.getElementById('node-'+nd.id);
         const h=el?el.offsetHeight:130;
@@ -1899,7 +2026,7 @@ function setupEvents(){
   wrap.addEventListener('dblclick',e=>{
     const onBg=e.target===wrap||e.target.id==='world'||e.target.id==='empty';
     if(onBg){
-      const wp=toWorld(e.clientX,e.clientY-46);
+      const wp=toWorld(e.clientX-SIDEBAR_W, e.clientY);
       openModal({x:wp.x-118,y:wp.y-65});
     }
   });
@@ -1912,7 +2039,7 @@ function setupEvents(){
 
   document.addEventListener('keydown',e=>{
     if(e.code==='Space'&&!e.target.closest('input,textarea,select')){spaceDown=true;e.preventDefault();}
-    if(e.code==='Escape'){cancelWireDraw();closeModal();closeDelModal();closeWireDelModal();hideCtx();if(focusNodeId)exitFocus();}
+    if(e.code==='Escape'){cancelWireDraw();closeModal();closeDelModal();closeWireDelModal();hideCtx();hideCmdPicker();clearCmd();if(focusNodeId)exitFocus();}
     if(e.key==='z'&&(e.metaKey||e.ctrlKey)&&!e.shiftKey&&!e.target.closest('input,textarea')){e.preventDefault();undo();}
     if(e.key==='Enter'&&document.getElementById('mbg').classList.contains('open')&&!e.target.closest('textarea')) confirmModal();
     if((e.code==='Delete'||e.code==='Backspace')&&selNode&&!e.target.closest('input,textarea,select')) smartDelete(selNode);
@@ -1925,7 +2052,7 @@ function setupEvents(){
     e.preventDefault();
     // At low zoom, try world-space hit test so right-click works on small nodes
     if(scale < TOOLTIP_ZOOM_THRESHOLD){
-      const wp=toWorld(e.clientX, e.clientY-46);
+      const wp=toWorld(e.clientX-SIDEBAR_W, e.clientY);
       const hit=nodes.find(nd=>{
         const el=document.getElementById('node-'+nd.id);
         const h=el?el.offsetHeight:130;
@@ -2307,6 +2434,116 @@ async function loadFromSOS(){
     btn.disabled=false; btn.textContent='Load from SOS';
   }
 }
+
+// ─────────────────────────────────────────────
+// REGISTER BUILT-IN COMMANDS
+// ─────────────────────────────────────────────
+registerCommand('focus',{
+  description:'Enter focus mode on a component',
+  aliases:['f'],
+  needsTarget:true,
+  pickerLabel:'Select assembly to focus',
+  getTargets: ()=>getFocusableNodes(),
+  run:(id)=>enterFocus(id)
+});
+registerCommand('edit',{
+  description:'Open inspector for a component',
+  aliases:['e','inspect'],
+  needsTarget:true,
+  pickerLabel:'Select component to edit',
+  getTargets: ()=>nodes,
+  run:(id)=>openIns(id)
+});
+registerCommand('delete',{
+  description:'Delete a component',
+  aliases:['del','d','remove'],
+  needsTarget:true,
+  pickerLabel:'Select component to delete',
+  getTargets: ()=>nodes,
+  run:(id)=>smartDelete(id)
+});
+registerCommand('duplicate',{
+  description:'Duplicate a component',
+  aliases:['dup','clone'],
+  needsTarget:true,
+  pickerLabel:'Select component to duplicate',
+  getTargets: ()=>nodes,
+  run:(id)=>{ const nd=getNode(id); if(nd){ pushUndo(); addNode({...nd,x:nd.x+24,y:nd.y+24}); renderAll(); updateStatus(); updateBOM(); } }
+});
+registerCommand('add',{
+  description:'Add a new component',
+  aliases:['a','new'],
+  needsTarget:false,
+  run:()=>openModal()
+});
+registerCommand('import',{
+  description:'Import CSV from SOS Inventory',
+  aliases:['csv','load'],
+  needsTarget:false,
+  run:()=>openCSVModal()
+});
+registerCommand('sos',{
+  description:'Connect to SOS Inventory API',
+  needsTarget:false,
+  run:()=>openSOSModal()
+});
+registerCommand('collapse',{
+  description:'Collapse all components',
+  aliases:['col'],
+  needsTarget:false,
+  run:()=>collapseAll()
+});
+registerCommand('expand',{
+  description:'Expand all components',
+  aliases:['exp'],
+  needsTarget:false,
+  run:()=>expandAll()
+});
+registerCommand('fit',{
+  description:'Fit all components into view',
+  aliases:['fitview','home'],
+  needsTarget:false,
+  run:()=>fitView()
+});
+registerCommand('zoom',{
+  description:'Reset zoom to 1:1',
+  aliases:['z','1:1'],
+  needsTarget:false,
+  run:()=>setZoom(1)
+});
+registerCommand('bom',{
+  description:'Toggle BOM table',
+  needsTarget:false,
+  run:()=>toggleBOM()
+});
+registerCommand('save',{
+  description:'Save current state as HTML file',
+  needsTarget:false,
+  run:()=>saveHTML()
+});
+registerCommand('reset',{
+  description:'Clear all components and connections',
+  needsTarget:false,
+  run:()=>clearAll()
+});
+registerCommand('undo',{
+  description:'Undo last action',
+  aliases:['u'],
+  needsTarget:false,
+  run:()=>undo()
+});
+registerCommand('help',{
+  description:'Show available commands',
+  aliases:['?','h'],
+  needsTarget:false,
+  run:()=>{
+    const seen=new Set();
+    const lines=Object.entries(COMMANDS)
+      .filter(([,v])=>{ if(seen.has(v))return false; seen.add(v); return true; })
+      .map(([k,v])=>k+(v.aliases?' / '+v.aliases.join(' / '):'')+': '+v.description);
+    showCmdHint(lines.join(' · '));
+  }
+});
 
 init();
 </script>
