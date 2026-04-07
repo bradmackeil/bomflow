@@ -1067,6 +1067,7 @@ function confirmDelete(reconnect){
 }
 function deleteWire(id){
   hideWireTip();
+  if(!confirm('Delete this connection?')) return;
   wires=wires.filter(w=>w.id!==id);
   renderAll(); updateStatus(); updateBOM();
 }
