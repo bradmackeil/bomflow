@@ -476,6 +476,18 @@ select.fi{cursor:pointer;}
   <div class="ci red" onclick="ctxDo('del')">🗑 Delete</div>
 </div>
 
+<!-- Wire delete confirm -->
+<div id="wire-del-bg" style="position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:450;">
+  <div style="background:var(--panel);border:1px solid var(--border2);border-radius:10px;width:340px;box-shadow:0 32px 80px rgba(0,0,0,.7);">
+    <div class="mh"><h2 style="font-size:13px;">Delete Connection?</h2><button class="mx" onclick="closeWireDelModal()">×</button></div>
+    <div style="padding:14px 20px;font-size:12px;color:var(--dim);line-height:1.6;">This will remove the wire between the two components. This action cannot be undone.</div>
+    <div class="mf">
+      <button class="bcan" onclick="closeWireDelModal()">Cancel</button>
+      <button class="bok" onclick="confirmWireDelete()" style="background:#ff6b8a;border-color:#ff6b8a;">Delete</button>
+    </div>
+  </div>
+</div>
+
 <!-- Delete dialog -->
 <div id="del-bg">
   <div id="del-box">
@@ -1065,9 +1077,19 @@ function confirmDelete(reconnect){
 
   deleteNode(id);
 }
+let _wireDelPendingId=null;
 function deleteWire(id){
   hideWireTip();
-  if(!confirm('Delete this connection?')) return;
+  _wireDelPendingId=id;
+  document.getElementById('wire-del-bg').style.display='flex';
+}
+function closeWireDelModal(){
+  document.getElementById('wire-del-bg').style.display='none';
+  _wireDelPendingId=null;
+}
+function confirmWireDelete(){
+  const id=_wireDelPendingId; if(!id) return;
+  closeWireDelModal();
   wires=wires.filter(w=>w.id!==id);
   renderAll(); updateStatus(); updateBOM();
 }
@@ -1875,7 +1897,7 @@ function setupEvents(){
 
   document.addEventListener('keydown',e=>{
     if(e.code==='Space'&&!e.target.closest('input,textarea,select')){spaceDown=true;e.preventDefault();}
-    if(e.code==='Escape'){cancelWireDraw();closeModal();closeDelModal();hideCtx();if(focusNodeId)exitFocus();}
+    if(e.code==='Escape'){cancelWireDraw();closeModal();closeDelModal();closeWireDelModal();hideCtx();if(focusNodeId)exitFocus();}
     if(e.key==='Enter'&&document.getElementById('mbg').classList.contains('open')&&!e.target.closest('textarea')) confirmModal();
     if((e.code==='Delete'||e.code==='Backspace')&&selNode&&!e.target.closest('input,textarea,select')) smartDelete(selNode);
     if((e.key==='='||e.key==='+')&&!e.target.closest('input,textarea')) setZoom(scale*1.15);
