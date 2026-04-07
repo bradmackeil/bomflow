@@ -535,6 +535,27 @@ let insId=null,bomOpen=false;
 const NODE_W=236;
 
 // ─────────────────────────────────────────────
+// UNDO
+// ─────────────────────────────────────────────
+const UNDO_STACK=[];
+const UNDO_MAX=50;
+function pushUndo(){
+  UNDO_STACK.push({
+    nodes:JSON.parse(JSON.stringify(nodes)),
+    wires:JSON.parse(JSON.stringify(wires)),
+    NID,WID
+  });
+  if(UNDO_STACK.length>UNDO_MAX) UNDO_STACK.shift();
+}
+function undo(){
+  if(!UNDO_STACK.length) return;
+  const s=UNDO_STACK.pop();
+  nodes=s.nodes; wires=s.wires; NID=s.NID; WID=s.WID;
+  selNode=null; insId=null; closeIns();
+  renderAll(); updateStatus(); updateBOM();
+}
+
+// ─────────────────────────────────────────────
 // TRANSFORM  (world layer CSS transform)
 // ─────────────────────────────────────────────
 let _rafPending = false;
@@ -616,6 +637,9 @@ function addWire(fn,tn,qty){
   if(wires.some(w=>w.fn===fn&&w.tn===tn)) return;
   wires.push({id:++WID,fn,tn,qty:qty||1});
 }
+// Undo-aware wrappers used by interactive actions (not bulk imports)
+function addNodeU(d){pushUndo();return addNode(d);}
+function addWireU(fn,tn,qty){pushUndo();addWire(fn,tn,qty);}
 function getWire(id){return wires.find(w=>w.id===id);}
 function getNode(id){return nodes.find(n=>n.id===id);}
 // Migrate old saves that store qty only on nodes — copy node qty to each of its outgoing wires
@@ -911,6 +935,7 @@ function hideNodeTip(){
 // DRAG NODES
 // ─────────────────────────────────────────────
 function startDrag(e,id){
+  pushUndo();
   dragging=id;
   const nd=getNode(id);
   const wp=toWorld(e.clientX, e.clientY-46);
@@ -946,7 +971,7 @@ function finishWireDraw(toId){
   if(fromId!==toId){
     // fromId dragged from RIGHT (parent side), toId received on LEFT (children side)
     // wire goes: fromId.R → toId.L  meaning fromId is the CHILD, toId is the PARENT
-    addWire(fromId, toId);
+    addWireU(fromId, toId);
     renderAll(); updateStatus(); updateBOM();
   }
 }
@@ -1049,6 +1074,7 @@ function closeDelModal(){
 function confirmDelete(reconnect){
   const id = _delPendingId; if(!id) return;
   closeDelModal();
+  pushUndo();
 
   const childWires  = wires.filter(w=>w.tn===id);
   const parentWires = wires.filter(w=>w.fn===id);
@@ -1090,6 +1116,7 @@ function closeWireDelModal(){
 function confirmWireDelete(){
   const id=_wireDelPendingId; if(!id) return;
   closeWireDelModal();
+  pushUndo();
   wires=wires.filter(w=>w.id!==id);
   renderAll(); updateStatus(); updateBOM();
 }
@@ -1140,7 +1167,7 @@ function openIns(id){
 }
 function closeIns(){document.getElementById('ins').classList.remove('open');insId=null;}
 function saveIns(){
-  if(!insId) return; const nd=getNode(insId);
+  if(!insId) return; pushUndo(); const nd=getNode(insId);
   nd.name=document.getElementById('i-name').value.trim()||nd.name;
   nd.pn  =document.getElementById('i-pn').value.trim();
   nd.rev =document.getElementById('i-rev').value.trim();
@@ -1203,7 +1230,7 @@ function confirmModal(){
   const r=document.getElementById('wrap').getBoundingClientRect();
   const wc=toWorld(r.width/2,r.height/2);
   const pos=modalSpawn||{x:wc.x-118,y:wc.y-65};
-  addNode({
+  addNodeU({
     name, type:mType,
     pn: document.getElementById('m-pn').value.trim(),
     rev:document.getElementById('m-rev').value.trim(),
@@ -1227,7 +1254,7 @@ function ctxDo(a){
   hideCtx(); if(!ctxNode) return;
   if(a==='edit') openIns(ctxNode);
   if(a==='focus') enterFocus(ctxNode);
-  if(a==='dup'){const nd=getNode(ctxNode);if(nd)addNode({...nd,x:nd.x+24,y:nd.y+24});renderAll();updateStatus();updateBOM();}
+  if(a==='dup'){const nd=getNode(ctxNode);if(nd){pushUndo();addNode({...nd,x:nd.x+24,y:nd.y+24});}renderAll();updateStatus();updateBOM();}
   if(a==='col') toggleCollapse(ctxNode);
   if(a==='del') smartDelete(ctxNode);
 }
@@ -1898,6 +1925,7 @@ function setupEvents(){
   document.addEventListener('keydown',e=>{
     if(e.code==='Space'&&!e.target.closest('input,textarea,select')){spaceDown=true;e.preventDefault();}
     if(e.code==='Escape'){cancelWireDraw();closeModal();closeDelModal();closeWireDelModal();hideCtx();if(focusNodeId)exitFocus();}
+    if(e.key==='z'&&(e.metaKey||e.ctrlKey)&&!e.shiftKey&&!e.target.closest('input,textarea')){e.preventDefault();undo();}
     if(e.key==='Enter'&&document.getElementById('mbg').classList.contains('open')&&!e.target.closest('textarea')) confirmModal();
     if((e.code==='Delete'||e.code==='Backspace')&&selNode&&!e.target.closest('input,textarea,select')) smartDelete(selNode);
     if((e.key==='='||e.key==='+')&&!e.target.closest('input,textarea')) setZoom(scale*1.15);
