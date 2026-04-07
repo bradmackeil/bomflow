@@ -858,6 +858,8 @@ function renderWires(){
   nodes.forEach(n=>{maxX=Math.max(maxX,n.x+400);maxY=Math.max(maxY,n.y+400);});
   [svgW,svgH,svgP].forEach(s=>{s.setAttribute('width',maxX);s.setAttribute('height',maxY);});
 
+  const focusSubtree = focusNodeId ? getFocusSubtree(focusNodeId) : null;
+
   wires.forEach(w=>{
     const fn=getNode(w.fn), tn=getNode(w.tn);
     if(!fn||!tn) return;
@@ -865,9 +867,12 @@ function renderWires(){
     const b=portPos(tn,'L');
     const d=curvePath(a,b);
 
+    const inFocus = !focusSubtree || (focusSubtree.has(w.fn) && focusSubtree.has(w.tn));
+
     // visible wire
     const vis=makePath(d,'wire');
-    vis.setAttribute('stroke','#3d9eff');
+    vis.setAttribute('stroke', inFocus ? '#3d9eff' : '#1e2030');
+    vis.style.opacity = inFocus ? '1' : '0.25';
     svgW.appendChild(vis);
 
     // fat invisible hit area
@@ -910,6 +915,7 @@ function renderWires(){
     txt.textContent = qtyStr;
     pill.appendChild(txt);
 
+    if(!inFocus) pill.style.opacity='0.08';
     pill.addEventListener('click',e=>{e.stopPropagation();editWireQty(w.id,mid);});
     svgP.appendChild(pill);
   });
@@ -1404,6 +1410,9 @@ function enterFocus(id){
   const nd = getNode(id);
   if(nd) document.getElementById('focus-search').value = nd.name || nd.pn || '';
 
+  // Re-render wires with focus dimming
+  renderWires();
+
   // Fit view to subtree
   fitFocusView(subtree);
 }
@@ -1431,6 +1440,7 @@ function exitFocus(){
   });
   document.getElementById('focus-bar').classList.remove('visible');
   document.getElementById('focus-search').value = '';
+  renderWires();
 }
 
 // ── Focus search dropdown ──
