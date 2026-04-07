@@ -875,17 +875,18 @@ function renderWires(){
     vis.style.opacity = inFocus ? '1' : '0.25';
     svgW.appendChild(vis);
 
-    // fat invisible hit area
+    // fat invisible hit area — only interactive for in-focus wires
     const hit=makePath(d,'wire-hit');
     hit.setAttribute('stroke','transparent');
     hit.setAttribute('stroke-width','14');
-    hit.style.cursor='pointer';
     hit.dataset.wid=w.id;
-    svgH.appendChild(hit);
-
-    hit.addEventListener('mouseenter',()=>{vis.classList.add('whov');showWireTip(a,b);});
-    hit.addEventListener('mouseleave',()=>{vis.classList.remove('whov');hideWireTip();});
-    hit.addEventListener('click',e=>{e.stopPropagation();deleteWire(w.id);});
+    if(inFocus){
+      hit.style.cursor='pointer';
+      svgH.appendChild(hit);
+      hit.addEventListener('mouseenter',()=>{vis.classList.add('whov');showWireTip(a,b);});
+      hit.addEventListener('mouseleave',()=>{vis.classList.remove('whov');hideWireTip();});
+      hit.addEventListener('click',e=>{e.stopPropagation();deleteWire(w.id);});
+    }
 
     // qty pill at bezier midpoint — in svg-pills so pointer-events work
     const qty = w.qty != null ? w.qty : 1;
