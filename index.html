@@ -2093,7 +2093,7 @@
 
   <input type="file" id="import-file" accept="application/json" hidden>
 
-<script>
+<script type="text/plain" id="bf-app-src">
   const canvas = document.getElementById('canvas');
   const world = document.getElementById('world');
   const vcZoom = document.getElementById('vc-zoom');
@@ -6947,10 +6947,26 @@
     document.body.classList.remove('bf-authed');
   }
 
+  // The whole app lives in a <script type="text/plain" id="bf-app-src"> block
+  // so it never executes — and its baked catalog / BOM data never lands in the
+  // DOM — until someone signs in. Reader mode, view-source, CSS-off, etc. only
+  // ever see the empty shell + the login form.
+  var appBooted = false;
+  function bootApp() {
+    if (appBooted) return;
+    var src = document.getElementById('bf-app-src');
+    if (!src) return;
+    appBooted = true;
+    var s = document.createElement('script');
+    s.textContent = src.textContent;
+    src.replaceWith(s);
+  }
+
   function enter(user) {
     me = user;
     window.__bfUser = user;
     token && localStorage.setItem(TOKEN_KEY, token);
+    bootApp();
     gate.classList.add('bf-hidden');
     document.body.classList.add('bf-authed');
     acctEmail.textContent = user.email;
@@ -7105,6 +7121,7 @@
   /* ── boot ── */
   if (location.protocol === 'file:') {
     // Opened as a local file — no functions available. Skip the gate for dev.
+    bootApp();
     gate.classList.add('bf-hidden');
     return;
   }
