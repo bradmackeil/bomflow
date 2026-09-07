@@ -100,7 +100,18 @@ exports.handler = async function (event) {
   if (event.httpMethod !== 'POST') return json(405, { error: 'Method Not Allowed' });
 
   const secret = process.env.BF_SECRET;
-  if (!secret) return json(500, { error: 'Server not configured: BF_SECRET is missing.' });
+  if (!secret) {
+    return json(500, {
+      error: 'Server not configured: BF_SECRET is missing.',
+      diag: {
+        context: process.env.CONTEXT || null,
+        runsOnNetlify: !!process.env.NETLIFY,
+        sees_BF_SECRET: !!process.env.BF_SECRET,
+        sees_BF_ADMIN_EMAIL: !!process.env.BF_ADMIN_EMAIL,
+        sees_BF_ADMIN_PASSWORD: !!process.env.BF_ADMIN_PASSWORD,
+      },
+    });
+  }
 
   let body;
   try { body = JSON.parse(event.body || '{}'); } catch { return json(400, { error: 'Bad request.' }); }
