@@ -1,0 +1,17 @@
+# dependencies
+node_modules/
+
+# OS / editor cruft
+.DS_Store
+**/.DS_Store
+
+# local API scratch / secrets — never commit these
+sos_api_key.txt
+sos_api_details.txt
+sos_build_details.txt
+sos_item_details.txt
+sos_po_details.txt
+sos_serialNumber_details.txt
+
+# Netlify local state
+.netlify/
