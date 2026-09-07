@@ -85,14 +85,31 @@ async function loadUsers(store) {
 }
 const saveUsers = (store, data) => store.setJSON(USERS_KEY, data);
 
+// Bootstrap the first admin from BF_ADMIN_EMAIL / BF_ADMIN_PASSWORD. While that
+// admin is the *only* user, the env vars stay authoritative — so if the stored
+// password drifts from the env var (e.g. it was seeded during setup and then
+// changed), it's re-synced here. Once a second user exists, the env vars are
+// ignored and passwords are managed in-app.
 async function ensureSeedAdmin(store, data) {
-  if (data.users.length > 0) return data;
   const email = normEmail(process.env.BF_ADMIN_EMAIL);
   const pw = process.env.BF_ADMIN_PASSWORD;
   if (!validEmail(email) || !pw) return data;
-  const { salt, hash } = hashPassword(pw);
-  data.users.push({ email, salt, hash, role: 'admin', createdAt: Date.now() });
-  await saveUsers(store, data);
+
+  if (data.users.length === 0) {
+    const { salt, hash } = hashPassword(pw);
+    data.users.push({ email, salt, hash, role: 'admin', createdAt: Date.now() });
+    await saveUsers(store, data);
+    return data;
+  }
+
+  if (data.users.length === 1) {
+    const u = data.users[0];
+    if (u.email === email && u.role === 'admin' && !checkPassword(pw, u.salt, u.hash)) {
+      const { salt, hash } = hashPassword(pw);
+      u.salt = salt; u.hash = hash;
+      await saveUsers(store, data);
+    }
+  }
   return data;
 }
 
@@ -138,10 +155,30 @@ exports.handler = async function (event) {
   const isAdmin = !!callerUser && callerUser.role === 'admin';
 
   switch (action) {
+    // Unauthenticated setup diagnostic — booleans and counts only, no secrets.
+    case 'diag': {
+      const seedEmail = normEmail(process.env.BF_ADMIN_EMAIL);
+      return json(200, {
+        context: process.env.CONTEXT || null,
+        sees_BF_SECRET: !!process.env.BF_SECRET,
+        sees_BF_ADMIN_EMAIL: !!process.env.BF_ADMIN_EMAIL,
+        sees_BF_ADMIN_PASSWORD: !!process.env.BF_ADMIN_PASSWORD,
+        seedEmailValid: validEmail(seedEmail),
+        userCount: data.users.length,
+        seedEmailIsAUser: !!data.users.find((u) => u.email === seedEmail),
+        storageOk: true,
+      });
+    }
+
     case 'login': {
       const u = findUser(body.email);
       if (!u || !checkPassword(body.password, u.salt, u.hash)) {
-        return json(401, { error: 'Incorrect email or password.' });
+        return json(401, {
+          error: 'Incorrect email or password.',
+          hint: data.users.length === 0
+            ? 'No users exist yet — BF_ADMIN_EMAIL / BF_ADMIN_PASSWORD are not reaching the function.'
+            : undefined,
+        });
       }
       return json(200, { token: makeToken(u, secret), user: publicUser(u) });
     }
