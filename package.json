@@ -1,0 +1,9 @@
+{
+  "name": "bomflow",
+  "version": "1.0.0",
+  "private": true,
+  "description": "BOMflow — visual BOM builder (getbomflow.com)",
+  "dependencies": {
+    "@netlify/blobs": "^11.0.0"
+  }
+}
