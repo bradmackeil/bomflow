@@ -155,17 +155,18 @@ exports.handler = async function (event) {
   const isAdmin = !!callerUser && callerUser.role === 'admin';
 
   switch (action) {
-    // Unauthenticated setup diagnostic — booleans and counts only, no secrets.
+    // Unauthenticated setup diagnostic. Goes quiet once any user exists, so it
+    // only ever exposes anything while the instance is still unconfigured.
     case 'diag': {
+      if (data.users.length > 0) return json(200, { ok: true, configured: true });
       const seedEmail = normEmail(process.env.BF_ADMIN_EMAIL);
       return json(200, {
-        context: process.env.CONTEXT || null,
+        configured: false,
         sees_BF_SECRET: !!process.env.BF_SECRET,
         sees_BF_ADMIN_EMAIL: !!process.env.BF_ADMIN_EMAIL,
         sees_BF_ADMIN_PASSWORD: !!process.env.BF_ADMIN_PASSWORD,
         seedEmailValid: validEmail(seedEmail),
-        userCount: data.users.length,
-        seedEmailIsAUser: !!data.users.find((u) => u.email === seedEmail),
+        userCount: 0,
         storageOk: true,
       });
     }
