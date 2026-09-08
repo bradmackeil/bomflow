@@ -4877,6 +4877,76 @@
   }
   loadCatalogOverrides();
 
+  // Components created on the fly (addcomponent / createassembly) are added to
+  // the sidebar catalog too, so they can be dragged back onto the canvas. They
+  // aren't in the baked-in ITEMS list, so they persist as their own array.
+  const CUSTOM_ITEMS_KEY = 'canvas-custom-items-v1';
+  let customSeq = 0;
+  function loadCustomItems() {
+    try {
+      const raw = localStorage.getItem(CUSTOM_ITEMS_KEY);
+      if (!raw) return;
+      const list = JSON.parse(raw);
+      if (!Array.isArray(list)) return;
+      for (const it of list) {
+        if (!it || !it.id || byId[it.id]) continue;
+        const entry = {
+          id: String(it.id), name: String(it.name || it.id),
+          type: it.type || 'Inventory', sku: it.sku || '',
+          cost: (it.cost === 0 || it.cost) ? it.cost : '',
+          vendor: it.vendor || '', notes: it.notes || '', __custom: true,
+        };
+        entry.__origId = entry.id;
+        ITEMS.push(entry);
+        const n = parseInt(String(it.id).replace(/\D/g, ''), 10);
+        if (!isNaN(n) && n > customSeq) customSeq = n;
+      }
+      rebuildById();
+    } catch {}
+  }
+  function saveCustomItems() {
+    try {
+      const list = ITEMS.filter(it => it.__custom).map(it => ({
+        id: it.id, name: it.name, type: it.type, sku: it.sku,
+        cost: it.cost, vendor: it.vendor, notes: it.notes,
+      }));
+      localStorage.setItem(CUSTOM_ITEMS_KEY, JSON.stringify(list));
+    } catch {}
+  }
+  loadCustomItems();
+
+  // Add a just-created component to the sidebar catalog (idempotent: an
+  // explicit part number that already exists, or a same name+type with no
+  // part number, is treated as "already in the list" and skipped).
+  function addCatalogItemFromMeta(name, meta) {
+    meta = meta || {};
+    const wantId = String(meta.itemId || '').trim();
+    const type = (String(meta.itemType || '').trim()) || 'Inventory';
+    if (wantId && byId[wantId]) return byId[wantId];
+    if (!wantId) {
+      const dup = ITEMS.find(it =>
+        it.name.toLowerCase() === name.toLowerCase() && (it.type || '') === type);
+      if (dup) return dup;
+    }
+    const id = wantId || `CUSTOM-${String(++customSeq).padStart(4, '0')}`;
+    const entry = {
+      id, name,
+      type,
+      sku: String(meta.sku || '').trim(),
+      cost: (meta.cost === 0 || meta.cost) ? meta.cost : '',
+      vendor: String(meta.vendor || '').trim(),
+      notes: String(meta.notes || '').trim(),
+      __custom: true,
+    };
+    entry.__origId = id;
+    ITEMS.push(entry);
+    rebuildById();
+    saveCustomItems();
+    buildSidebarList();
+    applySbFilter();
+    return entry;
+  }
+
   function money(n) {
     const v = Number(n);
     if (!isFinite(v)) return String(n);
@@ -5332,7 +5402,8 @@
       it.notes = notes;
       it.cost = cost;
       rebuildById();
-      saveCatalogOverride(it);
+      if (it.__custom) { it.__origId = it.id; saveCustomItems(); }
+      else saveCatalogOverride(it);
       buildSidebarList();
       applySbFilter();
     } else if (editContext.kind === 'node') {
@@ -5347,10 +5418,14 @@
     } else if (editContext.kind === 'assembly') {
       // createAssembly: Save creates the node and wires the captured selection
       // to it (addAssemblyNode pushes its own undo state).
-      addAssemblyNode(name, { itemId: id, itemType: type, sku, vendor, notes, cost }, editContext.ref);
+      const meta = { itemId: id, itemType: type || 'Assembly', sku, vendor, notes, cost };
+      addAssemblyNode(name, meta, editContext.ref);
+      addCatalogItemFromMeta(name, meta);
     } else {
       // 'new' — addcomponent: Save creates the node (addNode pushes its own undo state).
-      addNode(name, { itemId: id, itemType: type, sku, vendor, notes, cost });
+      const meta = { itemId: id, itemType: type, sku, vendor, notes, cost };
+      addNode(name, meta);
+      addCatalogItemFromMeta(name, meta);
     }
     return true;
   }
