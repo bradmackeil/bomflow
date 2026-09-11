@@ -1757,6 +1757,13 @@
   #bf-account:hover{ border-color:var(--border-strong,#bcbcb8); }
   #bf-account .bf-acc-dot{ width:6px; height:6px; border-radius:50%; background:var(--secondary,#3a6378); flex:none; }
   #bf-account .bf-acc-email{ max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #bf-account .bf-acc-co-tag{
+    max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    margin-right:2px; padding:2px 7px;
+    background:var(--accent-soft, rgba(255,77,26,.12)); color:var(--accent,#ff4d1a);
+    border-radius:4px; font-weight:700; letter-spacing:0.02em;
+  }
+  #bf-account .bf-acc-co-tag[hidden]{ display:none; }
   #bf-acc-menu{
     position:fixed; z-index:60;
     display:flex; flex-direction:column; min-width:150px;
@@ -1892,6 +1899,7 @@
   </div>
 
   <div id="bf-account" title="Account">
+    <span class="bf-acc-co-tag" hidden></span>
     <span class="bf-acc-dot"></span>
     <span class="bf-acc-email"></span>
   </div>
@@ -7220,6 +7228,7 @@
   var loginBtn = document.getElementById('bf-login-btn');
   var acct = document.getElementById('bf-account');
   var acctEmail = acct.querySelector('.bf-acc-email');
+  var acctCoTag = acct.querySelector('.bf-acc-co-tag');
   var acctMenu = document.getElementById('bf-acc-menu');
   var adminModal = document.getElementById('bf-admin');
   var adminList = document.getElementById('bf-admin-list');
@@ -7280,6 +7289,18 @@
     var c = companies.filter(function (x) { return x.id === activeCo; })[0];
     return c ? c.name : (companies[0] ? companies[0].name : 'Company');
   }
+  // Show which company the workspace is in, right on the account chip.
+  // Hidden when there's only one company (nothing to disambiguate).
+  function paintActiveCompany() {
+    if (!acctCoTag) return;
+    if (companies.length > 1) {
+      acctCoTag.textContent = activeCompanyName();
+      acctCoTag.title = 'Active company: ' + activeCompanyName();
+      acctCoTag.hidden = false;
+    } else {
+      acctCoTag.hidden = true;
+    }
+  }
 
   function api(action, params) {
     return fetch(API, {
@@ -7326,6 +7347,7 @@
     document.body.classList.add('bf-authed');
     acctEmail.textContent = user.email;
     buildAcctMenu();
+    paintActiveCompany();
   }
 
   function signOut() {
@@ -7498,6 +7520,7 @@
     if (Array.isArray(list)) companies = list;
     if (window.__bfCompany) window.__bfCompany.name = activeCompanyName();
     try { buildAcctMenu(); } catch (e) {}
+    paintActiveCompany();
     paintCompanyRows();
   }
 
@@ -7507,6 +7530,7 @@
     else coList.innerHTML = '<div style="font-size:12px;color:#767676">Loading…</div>';
     api('listCompanies').then(function (data) {
       if (Array.isArray(data.companies)) companies = data.companies;
+      paintActiveCompany();
       paintCompanyRows();
     }).catch(function (err) { coSay(err.message); });
   }
