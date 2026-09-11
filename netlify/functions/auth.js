@@ -80,10 +80,25 @@ async function openStore(event) {
   return blobs.getStore(STORE_NAME);
 }
 async function loadUsers(store) {
-  const data = await store.get(USERS_KEY, { type: 'json' });
-  return data && Array.isArray(data.users) ? data : { users: [] };
+  const data = await store.get(USERS_KEY, { type: 'json' }) || {};
+  if (!Array.isArray(data.users)) data.users = [];
+  if (!Array.isArray(data.companies)) data.companies = [];
+  return data;
 }
 const saveUsers = (store, data) => store.setJSON(USERS_KEY, data);
+
+const newCompanyId = () => 'c_' + crypto.randomBytes(5).toString('hex');
+const cleanName = (s) => String(s || '').trim().replace(/\s+/g, ' ').slice(0, 60);
+
+// Seed one company the first time. Its id is "default" so the app's existing
+// (un-namespaced) localStorage keeps working for whoever's already using it.
+async function ensureSeedCompany(store, data) {
+  if (data.companies.length === 0) {
+    data.companies.push({ id: 'default', name: 'Company 1', createdAt: Date.now() });
+    await saveUsers(store, data);
+  }
+  return data;
+}
 
 // Bootstrap the first admin from BF_ADMIN_EMAIL / BF_ADMIN_PASSWORD. While that
 // admin is the *only* user, the env vars stay authoritative — so if the stored
@@ -142,9 +157,11 @@ exports.handler = async function (event) {
   try {
     data = await loadUsers(store);
     data = await ensureSeedAdmin(store, data);
+    data = await ensureSeedCompany(store, data);
   } catch (e) {
     return json(500, { error: 'User storage error: ' + e.message });
   }
+  const companyList = () => data.companies.map((c) => ({ id: c.id, name: c.name }));
 
   const findUser = (email) => data.users.find((u) => u.email === normEmail(email));
   const publicUser = (u) => ({ email: u.email, role: u.role, createdAt: u.createdAt || null });
@@ -181,12 +198,54 @@ exports.handler = async function (event) {
             : undefined,
         });
       }
-      return json(200, { token: makeToken(u, secret), user: publicUser(u) });
+      return json(200, { token: makeToken(u, secret), user: publicUser(u), companies: companyList() });
     }
 
     case 'verify': {
       if (!callerUser) return json(401, { valid: false });
-      return json(200, { valid: true, user: publicUser(callerUser) });
+      return json(200, { valid: true, user: publicUser(callerUser), companies: companyList() });
+    }
+
+    case 'listCompanies': {
+      if (!callerUser) return json(401, { error: 'Sign in first.' });
+      return json(200, { companies: companyList() });
+    }
+
+    case 'createCompany': {
+      if (!isAdmin) return json(403, { error: 'Admins only.' });
+      const name = cleanName(body.name);
+      if (!name) return json(400, { error: 'Enter a company name.' });
+      if (data.companies.some((c) => c.name.toLowerCase() === name.toLowerCase())) {
+        return json(409, { error: 'A company with that name already exists.' });
+      }
+      const co = { id: newCompanyId(), name, createdAt: Date.now() };
+      data.companies.push(co);
+      await saveUsers(store, data);
+      return json(200, { ok: true, company: { id: co.id, name: co.name }, companies: companyList() });
+    }
+
+    case 'renameCompany': {
+      if (!isAdmin) return json(403, { error: 'Admins only.' });
+      const co = data.companies.find((c) => c.id === body.id);
+      if (!co) return json(404, { error: 'No such company.' });
+      const name = cleanName(body.name);
+      if (!name) return json(400, { error: 'Enter a company name.' });
+      if (data.companies.some((c) => c.id !== co.id && c.name.toLowerCase() === name.toLowerCase())) {
+        return json(409, { error: 'A company with that name already exists.' });
+      }
+      co.name = name;
+      await saveUsers(store, data);
+      return json(200, { ok: true, companies: companyList() });
+    }
+
+    case 'deleteCompany': {
+      if (!isAdmin) return json(403, { error: 'Admins only.' });
+      if (data.companies.length <= 1) return json(400, { error: 'Can’t delete the last company.' });
+      const i = data.companies.findIndex((c) => c.id === body.id);
+      if (i < 0) return json(404, { error: 'No such company.' });
+      data.companies.splice(i, 1);
+      await saveUsers(store, data);
+      return json(200, { ok: true, companies: companyList() });
     }
 
     case 'listUsers': {

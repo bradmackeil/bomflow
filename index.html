@@ -1771,6 +1771,14 @@
     text-align:left; cursor:pointer;
   }
   #bf-acc-menu button:hover{ background:var(--accent-soft, rgba(255,77,26,.12)); color:var(--accent,#ff4d1a); }
+  #bf-acc-menu .bf-acc-head{
+    padding:6px 10px 3px; font-family:'IBM Plex Mono', monospace;
+    font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.07em;
+    color:var(--muted,#767676);
+  }
+  #bf-acc-menu .bf-acc-co.active{ color:var(--accent,#ff4d1a); font-weight:600; }
+  #bf-acc-menu .bf-acc-co .bf-acc-check{ width:14px; flex:none; }
+  #bf-acc-menu .bf-acc-sep{ height:1px; margin:4px 6px; background:var(--border,#e7e7e4); }
 
   #bf-admin{
     position:fixed; inset:0; z-index:100001;
@@ -1829,6 +1837,44 @@
   }
   #bf-admin-msg{ font-size:12px; margin-top:10px; min-height:15px; color:var(--danger,#cc2a1c); }
   #bf-admin-msg.ok{ color:var(--secondary,#3a6378); }
+
+  #bf-companies{
+    position:fixed; inset:0; z-index:100001;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(0,0,0,.28); font-family:'Inter', system-ui, sans-serif;
+  }
+  #bf-companies[hidden]{ display:none; }
+  #bf-companies .bf-admin-card{
+    width:440px; max-width:calc(100vw - 40px); max-height:calc(100vh - 80px);
+    display:flex; flex-direction:column;
+    background:var(--surface,#fff); border:1px solid var(--text,#0a0a0a);
+    border-radius:9px; box-shadow:0 8px 28px rgba(0,0,0,.18); padding:20px;
+  }
+  #bf-companies h3{ font-size:15px; font-weight:600; margin-bottom:2px; }
+  #bf-companies .bf-admin-sub{ font-size:12px; color:var(--muted,#767676); margin-bottom:14px; }
+  #bf-companies .bf-admin-close{
+    position:absolute; top:14px; right:16px;
+    border:none; background:transparent; font-size:20px; line-height:1;
+    color:var(--muted,#767676); cursor:pointer;
+  }
+  #bf-companies-list{ overflow-y:auto; display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
+  #bf-companies-add{ display:flex; gap:6px; align-items:center; }
+  #bf-companies-add input{
+    flex:1; min-width:0; padding:7px 9px; font-family:inherit; font-size:12px;
+    border:1px solid var(--border-strong,#bcbcb8); border-radius:5px;
+    outline:none; background:var(--surface,#fff); color:var(--text,#0a0a0a);
+  }
+  #bf-companies-add button{
+    padding:7px 12px; font-family:'IBM Plex Mono', monospace; font-size:10px; font-weight:600;
+    text-transform:uppercase; letter-spacing:0.05em;
+    background:var(--text,#0a0a0a); color:#fff; border:1px solid var(--text,#0a0a0a);
+    border-radius:5px; cursor:pointer;
+  }
+  #bf-companies-msg{ font-size:12px; margin-top:10px; min-height:15px; color:var(--danger,#cc2a1c); }
+  #bf-companies-msg.ok{ color:var(--secondary,#3a6378); }
+  .bf-co-name{ flex:1; min-width:0; font-size:12.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .bf-co-name.current{ font-weight:600; color:var(--accent,#ff4d1a); }
+  .bf-co-tag{ font-family:'IBM Plex Mono', monospace; font-size:9px; color:var(--secondary,#3a6378); flex:none; }
 </style>
 </head>
 <body>
@@ -1867,6 +1913,20 @@
         <button type="submit">Add</button>
       </form>
       <div id="bf-admin-msg"></div>
+    </div>
+  </div>
+
+  <div id="bf-companies" hidden>
+    <div class="bf-admin-card">
+      <button class="bf-admin-close" id="bf-companies-close" aria-label="Close">&times;</button>
+      <h3>Companies</h3>
+      <div class="bf-admin-sub">Each company keeps its own items and BOMs. Everyone signed in can switch between them from the account menu.</div>
+      <div id="bf-companies-list"></div>
+      <form id="bf-companies-add">
+        <input type="text" id="bf-new-company" placeholder="New company name" required autocomplete="off">
+        <button type="submit">Add</button>
+      </form>
+      <div id="bf-companies-msg"></div>
     </div>
   </div>
   <aside id="sidebar">
@@ -7154,9 +7214,50 @@
   var adminList = document.getElementById('bf-admin-list');
   var adminAdd = document.getElementById('bf-admin-add');
   var adminMsg = document.getElementById('bf-admin-msg');
+  var coModal = document.getElementById('bf-companies');
+  var coList = document.getElementById('bf-companies-list');
+  var coAdd = document.getElementById('bf-companies-add');
+  var coMsg = document.getElementById('bf-companies-msg');
 
   var me = null;                       // { email, role }
   var token = localStorage.getItem(TOKEN_KEY) || null;
+  var COMPANY_KEY = 'bf-company';
+  var companies = [];                  // [{ id, name }]
+  var activeCo = 'default';
+
+  // Each company gets its own slice of localStorage. The first ("default")
+  // company keeps the plain keys so existing data is untouched; others get a
+  // "co:<id>:" prefix on the app's canvas-* and sos-access-token keys.
+  function installCompanyScope() {
+    if (activeCo === 'default') return;
+    var pfx = 'co:' + activeCo + ':';
+    var S = window.localStorage;
+    var g = S.getItem.bind(S), s = S.setItem.bind(S), rm = S.removeItem.bind(S);
+    var scope = function (k) {
+      return /^(canvas-|sos-access-token)/.test(String(k)) ? pfx + k : k;
+    };
+    try {
+      S.getItem = function (k) { return g(scope(k)); };
+      S.setItem = function (k, v) { return s(scope(k), v); };
+      S.removeItem = function (k) { return rm(scope(k)); };
+    } catch (e) { /* locked in some browsers — companies share storage there */ }
+  }
+
+  function resolveActiveCompany(list) {
+    companies = Array.isArray(list) ? list : [];
+    var want = localStorage.getItem(COMPANY_KEY) || 'default';
+    var found = companies.filter(function (c) { return c.id === want; })[0];
+    if (!found) {
+      activeCo = (companies[0] && companies[0].id) || 'default';
+      try { localStorage.setItem(COMPANY_KEY, activeCo); } catch (e) {}
+    } else {
+      activeCo = want;
+    }
+  }
+  function activeCompanyName() {
+    var c = companies.filter(function (x) { return x.id === activeCo; })[0];
+    return c ? c.name : (companies[0] ? companies[0].name : 'Company');
+  }
 
   function api(action, params) {
     return fetch(API, {
@@ -7191,10 +7292,13 @@
     src.replaceWith(s);
   }
 
-  function enter(user) {
+  function enter(user, companyList) {
     me = user;
     window.__bfUser = user;
     token && localStorage.setItem(TOKEN_KEY, token);
+    resolveActiveCompany(companyList);
+    window.__bfCompany = { id: activeCo, name: activeCompanyName() };
+    installCompanyScope();
     bootApp();
     gate.classList.add('bf-hidden');
     document.body.classList.add('bf-authed');
@@ -7209,22 +7313,51 @@
   }
 
   /* ── account menu ── */
+  function menuBtn(label, onClick, cls) {
+    var b = document.createElement('button');
+    if (cls) b.className = cls;
+    b.textContent = label;
+    b.addEventListener('click', onClick);
+    return b;
+  }
   function buildAcctMenu() {
     acctMenu.innerHTML = '';
-    if (me && me.role === 'admin') {
-      var b = document.createElement('button');
-      b.textContent = 'Manage users';
-      b.addEventListener('click', function () { hideAcctMenu(); openAdmin(); });
+
+    // company section
+    var head = document.createElement('div');
+    head.className = 'bf-acc-head';
+    head.textContent = 'Company';
+    acctMenu.appendChild(head);
+    companies.forEach(function (c) {
+      var b = menuBtn('', function () { switchCompany(c.id); }, 'bf-acc-co' + (c.id === activeCo ? ' active' : ''));
+      var check = document.createElement('span');
+      check.className = 'bf-acc-check';
+      check.textContent = c.id === activeCo ? '✓' : '';
+      b.textContent = '';
+      b.appendChild(check);
+      b.appendChild(document.createTextNode(c.name));
       acctMenu.appendChild(b);
+    });
+    if (me && me.role === 'admin') {
+      acctMenu.appendChild(menuBtn('Manage companies', function () { hideAcctMenu(); openCompanies(); }));
     }
-    var pw = document.createElement('button');
-    pw.textContent = 'Change my password';
-    pw.addEventListener('click', function () { hideAcctMenu(); changeMyPassword(); });
-    acctMenu.appendChild(pw);
-    var out = document.createElement('button');
-    out.textContent = 'Sign out';
-    out.addEventListener('click', signOut);
-    acctMenu.appendChild(out);
+
+    var sep = document.createElement('div');
+    sep.className = 'bf-acc-sep';
+    acctMenu.appendChild(sep);
+
+    if (me && me.role === 'admin') {
+      acctMenu.appendChild(menuBtn('Manage users', function () { hideAcctMenu(); openAdmin(); }));
+    }
+    acctMenu.appendChild(menuBtn('Change my password', function () { hideAcctMenu(); changeMyPassword(); }));
+    acctMenu.appendChild(menuBtn('Sign out', signOut));
+  }
+
+  function switchCompany(id) {
+    hideAcctMenu();
+    if (id === activeCo) return;
+    try { localStorage.setItem(COMPANY_KEY, id); } catch (e) {}
+    location.reload();   // reload so the app re-reads storage under the new company
   }
   function hideAcctMenu() { acctMenu.hidden = true; }
   acct.addEventListener('click', function () {
@@ -7332,6 +7465,83 @@
     }).catch(function (err) { adminSay(err.message); });
   });
 
+  /* ── admin: company management ── */
+  function coSay(msg, ok) { coMsg.textContent = msg || ''; coMsg.className = ok ? 'ok' : ''; }
+  function openCompanies() { coSay(''); coModal.hidden = false; renderCompanies(); }
+  function closeCompanies() { coModal.hidden = true; }
+  document.getElementById('bf-companies-close').addEventListener('click', closeCompanies);
+  coModal.addEventListener('click', function (e) { if (e.target === coModal) closeCompanies(); });
+
+  function applyCompanies(list) {
+    companies = list || companies;
+    buildAcctMenu();
+    renderCompanies();
+  }
+
+  function renderCompanies() {
+    coList.innerHTML = '<div style="font-size:12px;color:#767676">Loading…</div>';
+    api('listCompanies').then(function (data) {
+      var list = (data.companies || []).slice().sort(function (a, b) { return a.name.localeCompare(b.name); });
+      companies = data.companies || companies;
+      coList.innerHTML = '';
+      list.forEach(function (c) {
+        var row = document.createElement('div');
+        row.className = 'bf-u-row';
+
+        var name = document.createElement('span');
+        name.className = 'bf-co-name' + (c.id === activeCo ? ' current' : '');
+        name.textContent = c.name;
+
+        var open = document.createElement('button');
+        open.className = 'bf-u-act';
+        open.textContent = c.id === activeCo ? 'current' : 'switch to';
+        open.disabled = c.id === activeCo;
+        open.addEventListener('click', function () { switchCompany(c.id); });
+
+        var rename = document.createElement('button');
+        rename.className = 'bf-u-act';
+        rename.textContent = 'rename';
+        rename.addEventListener('click', function () {
+          var nn = window.prompt('Rename company', c.name);
+          if (nn == null) return;
+          api('renameCompany', { id: c.id, name: nn })
+            .then(function (d) { applyCompanies(d.companies); coSay('Renamed.', true); })
+            .catch(function (err) { coSay(err.message); });
+        });
+
+        var del = document.createElement('button');
+        del.className = 'bf-u-act bf-u-del';
+        del.textContent = 'delete';
+        del.disabled = list.length <= 1;
+        del.addEventListener('click', function () {
+          if (!window.confirm('Delete "' + c.name + '"? Its items and BOMs on this device are not erased, but it is removed from the list.')) return;
+          api('deleteCompany', { id: c.id })
+            .then(function (d) {
+              if (c.id === activeCo) { switchCompany((d.companies[0] || {}).id || 'default'); return; }
+              applyCompanies(d.companies); coSay('Deleted.', true);
+            })
+            .catch(function (err) { coSay(err.message); });
+        });
+
+        row.appendChild(name);
+        row.appendChild(open);
+        row.appendChild(rename);
+        row.appendChild(del);
+        coList.appendChild(row);
+      });
+    }).catch(function (err) { coList.innerHTML = ''; coSay(err.message); });
+  }
+
+  coAdd.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var name = document.getElementById('bf-new-company').value.trim();
+    api('createCompany', { name: name }).then(function (d) {
+      document.getElementById('bf-new-company').value = '';
+      applyCompanies(d.companies);
+      coSay('Added "' + name + '".', true);
+    }).catch(function (err) { coSay(err.message); });
+  });
+
   /* ── login ── */
   loginForm.addEventListener('submit', function (e) {
     e.preventDefault();
@@ -7341,7 +7551,7 @@
     var pw = document.getElementById('bf-pw').value;
     api('login', { email: email, password: pw }).then(function (data) {
       token = data.token;
-      enter(data.user);
+      enter(data.user, data.companies);
     }).catch(function (err) {
       loginErr.textContent = err.message;
     }).then(function () { loginBtn.disabled = false; });
@@ -7356,7 +7566,7 @@
   }
   if (token) {
     api('verify').then(function (data) {
-      if (data && data.valid) enter(data.user);
+      if (data && data.valid) enter(data.user, data.companies);
       else { localStorage.removeItem(TOKEN_KEY); token = null; showGate(); }
     }).catch(function () {
       // network/server error — let them try to sign in
