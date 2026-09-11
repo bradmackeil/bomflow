@@ -811,22 +811,6 @@
     letter-spacing:0;
   }
   #api-status.error{color:var(--danger);}
-  #api-token-wrap{position:relative;}
-  #api-show-token{
-    position:absolute;
-    right:9px;
-    top:50%;
-    transform:translateY(-50%);
-    background:none;
-    border:none;
-    font-size:11px;
-    font-family:var(--mono);
-    color:var(--muted);
-    cursor:pointer;
-    padding:0;
-    line-height:1;
-  }
-  #api-show-token:hover{color:var(--text);}
 
   /* ── Modal overlay ── */
   #overlay{
@@ -2108,15 +2092,13 @@
 
     <div class="modal" id="api-modal" role="dialog" aria-modal="true" aria-labelledby="api-title">
       <h2 id="api-title">Connect SOS Inventory</h2>
-      <p>Paste your SOS Inventory bearer access token. Items and BOM data will be imported onto the canvas.</p>
-      <div id="api-token-wrap">
-        <input id="api-token-input" type="password" placeholder="Bearer access token" autocomplete="off">
-        <button id="api-show-token" type="button" tabindex="-1">show</button>
-      </div>
+      <p id="api-desc">Authorize BOMflow to read your SOS Inventory items. Once connected, every item becomes available in the sidebar and item database.</p>
       <div id="api-status"></div>
       <div class="modal-actions">
-        <button class="btn btn-secondary" id="api-cancel">Cancel</button>
-        <button class="btn btn-primary" id="api-connect">Connect</button>
+        <button class="btn btn-secondary" id="api-cancel" type="button">Close</button>
+        <button class="btn btn-secondary" id="api-disconnect" type="button" hidden>Disconnect</button>
+        <button class="btn btn-primary" id="api-connect" type="button" hidden>Authorize with SOS</button>
+        <button class="btn btn-primary" id="api-import" type="button" hidden>Import all items</button>
       </div>
     </div>
 
@@ -4159,13 +4141,15 @@
     } catch (e) {}
     return CATALOG;
   }
-  function catAllRows() { return catBakedRows().concat(catCustomRows()); }
+  const catSosRows = () => (typeof SOS_ITEMS !== 'undefined' ? SOS_ITEMS : []);
+  function catAllRows() { return catBakedRows().concat(catSosRows()).concat(catCustomRows()); }
 
   const catRowId = (baseRow) => String(baseRow.ItemId || baseRow.Name || '');
-  // A row as it should appear. CUSTOM rows are user data — edited in place, no
-  // override layer; CATALOG rows get their catEdits patch applied.
+  // A row as it should appear. CUSTOM and SOS rows are user/imported data —
+  // edited in place, no override layer; CATALOG rows get their catEdits patch
+  // applied.
   const catEffective = (baseRow) => {
-    if (baseRow.__custom) return baseRow;
+    if (baseRow.__custom || baseRow.__sos) return baseRow;
     const ov = catEdits[catRowId(baseRow)];
     return ov ? Object.assign({}, baseRow, ov) : baseRow;
   };
@@ -4231,7 +4215,7 @@
         + `No items match “${escapeHtml(catQuery.trim())}”.</div></td></tr>`;
     } else {
       tbody.innerHTML = rows.map(({ base, eff }) => {
-        const ov = base.__custom ? {} : (catEdits[catRowId(base)] || {});
+        const ov = (base.__custom || base.__sos) ? {} : (catEdits[catRowId(base)] || {});
         return `<tr data-idx="${_catRows.indexOf(base)}"${base.__custom ? ' data-custom="1"' : ''}>`
           + `<td class="cat-act"><button class="cat-add" type="button" title="Add to canvas" tabindex="-1">+</button></td>`
           + cols.map((c, ci) => {
@@ -4275,12 +4259,12 @@
       let val = input.value.trim();
       if (col && col.num && val !== '' && !Number.isNaN(Number(val))) val = Number(val);
 
-      if (base.__custom) {
-        // CUSTOM (canvas-created) row — edit the object in place; it's the
-        // source, not an override.
+      if (base.__custom || base.__sos) {
+        // CUSTOM (canvas-created) / SOS (imported) row — edit the object in
+        // place; it's the source, not an override.
         base[key] = val;
         if (key === 'ItemId') base.SKU = base.SKU || val;
-        saveCustom();
+        if (base.__custom) saveCustom(); else saveSosItems();
         syncSidebarItems(true);
         renderCatalog();
         return;
@@ -4990,6 +4974,34 @@
     } catch {}
   }
 
+  // SOS_ITEMS: a third catalog row source (alongside CATALOG + CUSTOM) —
+  // every item pulled in by the connectapi "Import all items" flow (see the
+  // SOS Inventory integration section). Same CATALOG_COLS shape, edited in
+  // place like CUSTOM rows (no catEdits override layer). Persisted per
+  // company via the 'canvas-' localStorage scoping in installCompanyScope().
+  const SOS_ITEMS_KEY = 'canvas-sos-items-v1';
+  const SOS_ITEMS = [];
+  function loadSosItems() {
+    let raw;
+    try { raw = localStorage.getItem(SOS_ITEMS_KEY); } catch { return; }
+    if (!raw) return;
+    try {
+      const list = JSON.parse(raw);
+      if (!Array.isArray(list)) return;
+      for (const rec of list) {
+        if (!rec || !rec.ItemId) continue;
+        rec.__sos = true;
+        SOS_ITEMS.push(rec);
+      }
+    } catch {}
+  }
+  function saveSosItems() {
+    try {
+      localStorage.setItem(SOS_ITEMS_KEY,
+        JSON.stringify(SOS_ITEMS.map(({ __sos, ...r }) => r)));
+    } catch {}
+  }
+
   // Fold the retired per-ITEMS overrides map into catEdits, once.
   function migrateOldOverrides() {
     let raw;
@@ -5190,6 +5202,7 @@
   loadCustom();
   saveCustom();            // re-persist in the current shape if it was migrated
   migrateOldOverrides();
+  loadSosItems();
   syncSidebarItems(true);
 
   /* ── Sidebar tabs: Items / Canvases / Environments ── */
@@ -5562,11 +5575,11 @@
         ItemId: newId, Name: name, TypeOfItem: type || 'Inventory',
         VendorPartNumber: sku, PreferredVendor: vendor, Notes: notes, Cost: cost,
       };
-      if (cat && cat.__custom) {
-        // CUSTOM row — edit in place.
+      if (cat && (cat.__custom || cat.__sos)) {
+        // CUSTOM / SOS row — edit in place.
         if (!cat.SKU || cat.SKU === it.id) cat.SKU = newId;
         Object.assign(cat, fields);
-        saveCustom();
+        if (cat.__custom) saveCustom(); else saveSosItems();
       } else if (cat) {
         // Baked CATALOG row — record the diff in catEdits (the one edit layer).
         ensureCatInit();
@@ -6789,19 +6802,36 @@
     }
   }
 
-  /* ── SOS Inventory integration ── */
-  const apiModal    = document.getElementById('api-modal');
-  const apiTokenInput = document.getElementById('api-token-input');
-  const apiStatusEl = document.getElementById('api-status');
-  const SOS_TOKEN_KEY = 'sos-access-token';
+  /* ── SOS Inventory integration ──
+     OAuth2 authorization-code flow (sos_api_details.txt): the browser never
+     holds a client secret or an access/refresh token — those live server-side
+     in the sos-proxy Netlify function, held per company in Netlify Blobs. This
+     block only (1) sends the user to SOS to authorize and catches the
+     ?code= redirect back, (2) asks the proxy to exchange/refresh/hold the
+     token, and (3) pulls every item into the SOS_ITEMS catalog layer (see
+     ~line 4959) so it's immediately visible in the sidebar + item database —
+     the canvas itself is untouched by connecting or importing. */
+  const apiModal         = document.getElementById('api-modal');
+  const apiStatusEl      = document.getElementById('api-status');
+  const apiDescEl        = document.getElementById('api-desc');
+  const apiConnectBtn    = document.getElementById('api-connect');
+  const apiImportBtn     = document.getElementById('api-import');
+  const apiDisconnectBtn = document.getElementById('api-disconnect');
 
-  function openApiModal() {
-    apiTokenInput.value = localStorage.getItem(SOS_TOKEN_KEY) || '';
-    apiTokenInput.type = 'password';
-    document.getElementById('api-show-token').textContent = 'show';
-    setApiStatus('');
-    openModal(apiModal);
-    setTimeout(() => apiTokenInput.focus(), 50);
+  // Registered on the SOS Inventory developer portal for the
+  // "bomflow-connection" app. The client secret is NOT here — it's only
+  // known to the sos-proxy function (SOS_CLIENT_SECRET env var).
+  const SOS_CLIENT_ID       = 'cb37d7d3348d4ec5bcab12f4524962fd';
+  const SOS_REDIRECT_URI    = 'https://getbomflow.com/';
+  const SOS_OAUTH_STATE_KEY = 'sos-oauth-state'; // not company-scoped: read back after a full-page redirect
+
+  function bfSessionToken() {
+    try { return localStorage.getItem((typeof TOKEN_KEY !== 'undefined' && TOKEN_KEY) || 'bf-session'); }
+    catch { return null; }
+  }
+  function bfCompanyId() {
+    try { return (window.__bfCompany && window.__bfCompany.id) || 'default'; }
+    catch { return 'default'; }
   }
 
   function setApiStatus(msg, isError = false) {
@@ -6809,19 +6839,6 @@
     apiStatusEl.className = isError ? 'error' : '';
     apiStatusEl.style.display = msg ? 'block' : 'none';
   }
-
-  document.getElementById('api-show-token').addEventListener('click', () => {
-    const isHidden = apiTokenInput.type === 'password';
-    apiTokenInput.type = isHidden ? 'text' : 'password';
-    document.getElementById('api-show-token').textContent = isHidden ? 'hide' : 'show';
-  });
-
-  document.getElementById('api-connect').addEventListener('click', runSosConnect);
-  document.getElementById('api-cancel').addEventListener('click', closeModal);
-  apiTokenInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') runSosConnect();
-    if (e.key === 'Escape') closeModal();
-  });
 
   function sosSleep(ms) {
     return new Promise(r => setTimeout(r, ms));
@@ -6831,72 +6848,126 @@
   let sosProxyUrl = null;
   const SOS_PROXY_ENDPOINTS = ['/.netlify/functions/sos-proxy', 'http://localhost:3131/sos-proxy'];
 
-  async function sosProxyFetch(url, token, path, timeoutMs) {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-    try {
-      return await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, path }),
-        signal: ctrl.signal,
-      });
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-
-  async function sosApiCall(token, path) {
-    // Retry transient failures (the hosted proxy has a ~10s limit and SOS can
-    // be slow) with backoff. A persistent timeout points the user at the local
-    // proxy, which has no limit.
-    const RETRYABLE = new Set([408, 429, 500, 502, 503, 504]);
-    const MAX_TRIES = 3;
-    let gotResponse = false;   // did any endpoint ever answer with HTTP at all?
-    let transient = null;      // last retryable failure message
-
-    for (let attempt = 1; attempt <= MAX_TRIES; attempt++) {
-      // Once an endpoint has actually succeeded, stick with it; otherwise keep
-      // probing both (so a 504 from the hosted proxy still falls through to a
-      // local "node proxy.js" if one is running).
-      const urls = sosProxyUrl ? [sosProxyUrl] : SOS_PROXY_ENDPOINTS;
-      for (const url of urls) {
-        let resp;
-        try {
-          resp = await sosProxyFetch(url, token, path, 28000);
-        } catch (e) {
-          if (e && e.name === 'AbortError') { gotResponse = true; transient = 'The SOS request timed out.'; }
-          continue; // unreachable / aborted — try the next endpoint
-        }
-        gotResponse = true;
-        if (resp.status === 404 && url.startsWith('/.netlify')) continue; // no Netlify fns → local proxy
-        if (resp.status === 401) throw new Error('Invalid or expired access token.');
-        if (RETRYABLE.has(resp.status)) {
-          transient = `SOS/proxy busy (HTTP ${resp.status}).`;
-          continue; // try the other endpoint, then back off
-        }
-        if (!resp.ok) throw new Error(`Proxy error (HTTP ${resp.status}).`);
-        sosProxyUrl = url;
-        const data = await resp.json();
-        if (data.status && data.status !== 'ok') throw new Error(data.message || 'SOS API error');
-        return data;
+  // Every call carries the BOMflow session + active company — the function
+  // looks up (and refreshes) that company's stored SOS token; no SOS
+  // credential ever passes through the browser.
+  async function sosProxyCall(action, extra) {
+    const body = Object.assign(
+      { action, bfToken: bfSessionToken(), companyId: bfCompanyId() },
+      extra || {}
+    );
+    const urls = sosProxyUrl ? [sosProxyUrl] : SOS_PROXY_ENDPOINTS;
+    let lastErr = null;
+    for (const url of urls) {
+      let resp;
+      try {
+        resp = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+      } catch (e) {
+        lastErr = e;
+        continue; // unreachable — try the next endpoint
       }
-      if (attempt < MAX_TRIES) await sosSleep(1200 * attempt);
+      if (resp.status === 404 && url.startsWith('/.netlify')) continue; // no Netlify fns → local proxy
+      sosProxyUrl = url;
+      const data = await resp.json().catch(() => null);
+      if (!resp.ok) throw new Error((data && data.message) || `SOS proxy error (HTTP ${resp.status}).`);
+      return data || {};
     }
-
-    if (!gotResponse) {
-      throw new Error('No proxy reachable. On getbomflow.com this should just work; locally, run "node proxy.js" first.');
-    }
-    throw new Error((transient || 'The SOS request failed.') +
-      ' The hosted proxy caps each request at ~10s — for a large SOS account, run "node proxy.js" locally (no limit) and retry.');
+    throw new Error((lastErr && lastErr.message) ||
+      'No proxy reachable. On getbomflow.com this should just work; locally, connecting to SOS needs the hosted deploy.');
   }
 
-  async function fetchAllSosItems(token) {
+  function sosRandomState() {
+    return (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  }
+
+  function startSosAuthorize() {
+    const state = sosRandomState();
+    try { localStorage.setItem(SOS_OAUTH_STATE_KEY, state); } catch {}
+    const url = `https://api.sosinventory.com/oauth2/authorize?response_type=code`
+      + `&client_id=${encodeURIComponent(SOS_CLIENT_ID)}`
+      + `&redirect_uri=${encodeURIComponent(SOS_REDIRECT_URI)}`
+      + `&state=${encodeURIComponent(state)}`;
+    location.href = url;
+  }
+
+  // Reflects the modal to match whether this company currently has a live
+  // SOS connection: "Authorize" when not connected, "Import" + "Disconnect"
+  // once it is.
+  async function refreshApiModal() {
+    apiConnectBtn.hidden = true;
+    apiImportBtn.hidden = true;
+    apiDisconnectBtn.hidden = true;
+    setApiStatus('Checking connection…');
+    try {
+      const { connected } = await sosProxyCall('status');
+      if (connected) {
+        apiDescEl.textContent = 'Connected to SOS Inventory. Import to make every item available in the sidebar and item database.';
+        apiImportBtn.hidden = false;
+        apiDisconnectBtn.hidden = false;
+      } else {
+        apiDescEl.textContent = 'Authorize BOMflow to read your SOS Inventory items. Once connected, every item becomes available in the sidebar and item database.';
+        apiConnectBtn.hidden = false;
+      }
+      setApiStatus('');
+    } catch (err) {
+      apiConnectBtn.hidden = false;
+      setApiStatus(err.message || 'Could not reach SOS.', true);
+    }
+  }
+
+  function openApiModal() {
+    openModal(apiModal);
+    refreshApiModal();
+  }
+
+  apiConnectBtn.addEventListener('click', startSosAuthorize);
+  document.getElementById('api-cancel').addEventListener('click', closeModal);
+  apiDisconnectBtn.addEventListener('click', async () => {
+    apiDisconnectBtn.disabled = true;
+    try {
+      await sosProxyCall('disconnect');
+      await refreshApiModal();
+    } catch (err) {
+      setApiStatus(err.message || 'Could not disconnect.', true);
+    } finally {
+      apiDisconnectBtn.disabled = false;
+    }
+  });
+
+  // On load, if SOS just redirected back with ?code=&state=, finish the
+  // handshake (the code is exchanged for a token server-side) and reopen the
+  // modal so the user lands on "Connected — Import all items".
+  (function handleSosOauthRedirect() {
+    const params = new URLSearchParams(location.search);
+    const code = params.get('code');
+    const state = params.get('state');
+    if (!code) return;
+    let expected = null;
+    try { expected = localStorage.getItem(SOS_OAUTH_STATE_KEY); } catch {}
+    history.replaceState(null, '', location.pathname + location.hash);
+    try { localStorage.removeItem(SOS_OAUTH_STATE_KEY); } catch {}
+    if (!state || state !== expected) {
+      flashCmdHint('SOS authorization could not be verified — try connecting again.');
+      return;
+    }
+    openModal(apiModal);
+    apiConnectBtn.hidden = true;
+    setApiStatus('Finishing connection to SOS…');
+    sosProxyCall('exchange', { code, redirectUri: SOS_REDIRECT_URI })
+      .then(() => refreshApiModal())
+      .catch(err => setApiStatus(err.message || 'Could not connect to SOS.', true));
+  })();
+
+  async function fetchAllSosItems() {
     let items = [];
     let start = 1;
     let total = Infinity;
     while (start <= total) {
-      const result = await sosApiCall(token, `item?start=${start}&maxresults=100&archived=no`);
+      const result = await sosProxyCall('items', { path: `item?start=${start}&maxresults=100&archived=no` });
       const page = result.data || [];
       items = items.concat(page);
       total = result.totalCount ?? items.length;
@@ -6908,252 +6979,67 @@
     return items;
   }
 
-  async function fetchSosBom(token, itemId) {
-    const result = await sosApiCall(token, `item/${itemId}/bom`);
-    return result.data || null;
+  // Map a SOS item record onto the CATALOG_COLS shape so it's a first-class
+  // catalog row (sidebar + item database) — see CATALOG_COLS, ~line 4942,
+  // and the sos_item_details.txt schema this is drawn from.
+  function sosItemToCatalogRow(item) {
+    const id = item.sku ? String(item.sku) : `SOS-${item.id}`;
+    return {
+      ItemId: id,
+      Name: item.name || item.fullname || id,
+      SalesDescription: item.description || '',
+      PurchaseDescription: item.purchaseDescription || '',
+      QuantityOnHand: (item.onhand === 0 || item.onhand) ? item.onhand : '',
+      Category: (item.category && item.category.name) || '',
+      SKU: item.sku || '',
+      Barcode: item.barcode || '',
+      PreferredVendor: (item.vendor && item.vendor.name) || '',
+      VendorPartNumber: item.vendorPartNumber || '',
+      CustomerPartNumber: item.customerPartNumber || '',
+      SalesPrice: (item.salesPrice === 0 || item.salesPrice) ? item.salesPrice : '',
+      Cost: (item.purchaseCost === 0 || item.purchaseCost) ? item.purchaseCost
+          : (item.basePurchaseCost === 0 || item.basePurchaseCost) ? item.basePurchaseCost : '',
+      TypeOfItem: item.type || 'Inventory Item',
+      ReorderLevel: (item.reorderPoint === 0 || item.reorderPoint) ? item.reorderPoint : '',
+      MaxStockLevel: (item.maxStock === 0 || item.maxStock) ? item.maxStock : '',
+      LeadTime: (item.leadTime === 0 || item.leadTime) ? item.leadTime : '',
+      Weight: (item.weight === 0 || item.weight) ? item.weight : '',
+      WeightUnit: item.weightunit || '',
+      Volume: (item.volume === 0 || item.volume) ? item.volume : '',
+      VolumeUnit: item.volumeunit || '',
+      IsTaxable: item.taxable ? 'true' : 'false',
+      SerialTracking: item.serialTracking ? 'true' : 'false',
+      LotTracking: item.lotTracking ? 'true' : 'false',
+      Notes: item.notes || '',
+      Archived: item.archived ? 'true' : 'false',
+      Tags: [item.tags, 'sos'].filter(Boolean).join(','),
+      __sos: true,
+      __sosId: item.id,
+    };
   }
 
-  async function runSosConnect() {
-    const token = apiTokenInput.value.trim();
-    if (!token) { apiTokenInput.focus(); return; }
-    localStorage.setItem(SOS_TOKEN_KEY, token);
-
-    const connectBtn = document.getElementById('api-connect');
-    connectBtn.disabled = true;
-    connectBtn.textContent = 'Connecting…';
-
+  async function runSosImport() {
+    apiImportBtn.disabled = true;
+    apiImportBtn.textContent = 'Importing…';
     try {
-      // 1. Fetch all items
-      const items = await fetchAllSosItems(token);
+      const items = await fetchAllSosItems();
       if (!items.length) throw new Error('No items found in this SOS account.');
-
-      // 2. Find assemblies and kits (these have BOMs)
-      const assemblies = items.filter(i => i.type === 'Assembly' || i.type === 'Kit');
-      setApiStatus(`Found ${items.length} items, ${assemblies.length} assemblies. Fetching BOMs…`);
-
-      // 3. Fetch BOMs for each assembly
-      // bomMap: assemblyId (string) → [{ id, name, qty }]
-      const bomMap = {};
-      for (let i = 0; i < assemblies.length; i++) {
-        const asm = assemblies[i];
-        setApiStatus(`Fetching BOM ${i + 1} / ${assemblies.length}: ${asm.name}`);
-        try {
-          const bom = await fetchSosBom(token, asm.id);
-          if (bom && Array.isArray(bom.lines)) {
-            bomMap[String(asm.id)] = bom.lines
-              .filter(l => l.componentItem)
-              .map(l => ({
-                id: String(l.componentItem.id),
-                name: l.componentItem.name,
-                qty: l.quantity || 1,
-              }));
-          }
-        } catch { /* skip broken BOMs */ }
-        if (i < assemblies.length - 1) await sosSleep(500);
-      }
-
-      // 4. Build unified item map; add any BOM-referenced items missing from the item list
-      const itemMap = {};
-      for (const item of items) itemMap[String(item.id)] = item;
-      for (const comps of Object.values(bomMap)) {
-        for (const c of comps) {
-          if (!itemMap[c.id]) itemMap[c.id] = { id: c.id, name: c.name, type: 'Inventory Item' };
-        }
-      }
-
-      // 5. Populate canvas
-      setApiStatus('Building canvas…');
-      await sosSleep(80);
-      populateCanvasFromSos(itemMap, bomMap);
-
+      setApiStatus('Saving to catalog…');
+      SOS_ITEMS.length = 0;
+      for (const item of items) SOS_ITEMS.push(sosItemToCatalogRow(item));
+      saveSosItems();
+      syncSidebarItems(true);
+      if (typeof renderCatalog === 'function') renderCatalog();
       closeModal();
-      flashCmdHint(`Imported ${Object.keys(itemMap).length} items from SOS Inventory`);
-
+      flashCmdHint(`Imported ${items.length} items from SOS Inventory`);
     } catch (err) {
-      setApiStatus(err.message || 'Connection failed.', true);
+      setApiStatus(err.message || 'Import failed.', true);
     } finally {
-      connectBtn.disabled = false;
-      connectBtn.textContent = 'Connect';
+      apiImportBtn.disabled = false;
+      apiImportBtn.textContent = 'Import all items';
     }
   }
-
-  function populateCanvasFromSos(itemMap, bomMap) {
-    pushUndo();
-    world.querySelectorAll('.node').forEach(n => n.remove());
-    connections.length = 0;
-    groups.length = 0;
-    selectedNodes.clear();
-    selectedWires.clear();
-    nodeCount = 0;
-    nextNodeId = 1;
-
-    // Create all nodes at origin first so the DOM can measure their heights
-    for (const [id, item] of Object.entries(itemMap)) {
-      createNode(item.name || item.fullname || `Item ${id}`, 0, 0, id);
-      nodeCount++;
-    }
-
-    // Wire: component right → assembly left  (matches canvas BOM parent-child scheme)
-    for (const [asmId, comps] of Object.entries(bomMap)) {
-      if (!itemMap[asmId]) continue;
-      for (const comp of comps) {
-        if (!itemMap[comp.id]) continue;
-        if (!connectionExists(comp.id, 'right', asmId, 'left')) {
-          connections.push({ from: comp.id, fromSide: 'right', to: asmId, toSide: 'left', qty: comp.qty || 1 });
-        }
-      }
-    }
-
-    // Wait one frame so the browser has laid out the nodes, then measure + position
-    requestAnimationFrame(() => {
-      applySosLayout();
-      syncImports();
-      redrawWires();
-      updateModeCount();
-      saveState();
-      refreshListPanel();
-      runZoomFit();
-    });
-  }
-
-  // Port of index.html autoLayout — centers parents over their children,
-  // measures real DOM heights, and solves column width for a balanced aspect ratio.
-  function applySosLayout() {
-    const nodeEls = [...world.querySelectorAll('.node')];
-    if (!nodeEls.length) return;
-
-    const PAD_Y      = 20;
-    const ROOT_GAP   = 60;
-    const NODE_W_EST = 200;
-    const MARGIN     = 60;
-
-    const nid = el => el.dataset.id;
-    const nodeH = el => el.offsetHeight || 64;
-
-    // Build parent/child maps from connections.
-    // connection: { from: compId (right) → to: asmId (left) }
-    // so asmId's "children" in the BOM = the from-nodes
-    const childrenOf = {}, parentsOf = {};
-    nodeEls.forEach(el => { childrenOf[nid(el)] = []; parentsOf[nid(el)] = []; });
-    connections.forEach(c => {
-      if (childrenOf[c.to])   childrenOf[c.to].push(c.from);   // assembly → its components
-      if (parentsOf[c.from])  parentsOf[c.from].push(c.to);    // component → assemblies using it
-    });
-
-    // Roots = nodes with no parent assemblies (= top-level finished goods / assemblies)
-    const roots = nodeEls.filter(el => parentsOf[nid(el)].length === 0);
-    if (!roots.length) {
-      // Fallback: simple grid
-      nodeEls.forEach((el, i) => {
-        el.style.left = `${MARGIN + (i % 5) * 260}px`;
-        el.style.top  = `${MARGIN + Math.floor(i / 5) * 100}px`;
-      });
-      return;
-    }
-
-    // Assign columns: roots at col 0, their components at col 1+, etc.
-    const colOf = {};
-    function assignCol(id, col) {
-      if (colOf[id] !== undefined && colOf[id] >= col) return;
-      colOf[id] = col;
-      childrenOf[id].forEach(cid => assignCol(cid, col + 1));
-    }
-    roots.forEach(el => assignCol(nid(el), 0));
-    nodeEls.forEach(el => { if (colOf[nid(el)] === undefined) colOf[nid(el)] = 0; });
-    const maxCol = Math.max(0, ...Object.values(colOf));
-
-    // Only descend into children that are strictly deeper (handles DAG back-edges)
-    const deeperKids = id => childrenOf[id].filter(cid => colOf[cid] > colOf[id]);
-
-    // Pass 1: compute packed subtree height (memoised)
-    const subtreeH = {};
-    function calcH(id) {
-      if (subtreeH[id] !== undefined) return subtreeH[id];
-      const el = world.querySelector(`.node[data-id="${id}"]`);
-      const h = el ? nodeH(el) : 64;
-      const kids = deeperKids(id);
-      subtreeH[id] = kids.length
-        ? Math.max(h, kids.reduce((s, cid) => s + calcH(cid) + PAD_Y, -PAD_Y))
-        : h;
-      return subtreeH[id];
-    }
-    roots.forEach(el => calcH(nid(el)));
-    nodeEls.forEach(el => { if (subtreeH[nid(el)] === undefined) subtreeH[nid(el)] = nodeH(el); });
-
-    // Pass 2: top-down placement, centering each parent over its children
-    const assignedY = {}, colCursor = {};
-    const placed = new Set();
-
-    function place(id, suggestedTopY) {
-      if (placed.has(id)) return;
-      placed.add(id);
-      const el = world.querySelector(`.node[data-id="${id}"]`);
-      const h  = el ? nodeH(el) : 64;
-      const col = colOf[id];
-      const topY = Math.max(suggestedTopY, colCursor[col] || MARGIN);
-      const kids = deeperKids(id);
-
-      if (!kids.length) {
-        assignedY[id] = topY;
-        colCursor[col] = topY + h + PAD_Y;
-        return;
-      }
-
-      const childCol    = Math.max(...kids.map(cid => colOf[cid]));
-      const childCursor = Math.max(colCursor[childCol] || MARGIN, topY);
-      let cursor = childCursor;
-      kids.forEach(cid => {
-        if (!placed.has(cid)) {
-          place(cid, cursor);
-          cursor = colCursor[colOf[cid]] || cursor;
-        }
-      });
-
-      const placed_kids = kids.filter(cid => assignedY[cid] !== undefined);
-      const kidTop = Math.min(...placed_kids.map(cid => assignedY[cid]));
-      const kidBot = Math.max(...placed_kids.map(cid => {
-        const ce = world.querySelector(`.node[data-id="${cid}"]`);
-        return assignedY[cid] + (ce ? nodeH(ce) : 64);
-      }));
-      const parentY = Math.max(colCursor[col] || MARGIN, (kidTop + kidBot) / 2 - h / 2);
-      assignedY[id] = parentY;
-      colCursor[col] = Math.max(colCursor[col] || MARGIN, parentY + h + PAD_Y);
-    }
-
-    let globalY = MARGIN;
-    roots.forEach(el => {
-      const id = nid(el);
-      colCursor[colOf[id]] = Math.max(colCursor[colOf[id]] || MARGIN, globalY);
-      place(id, globalY);
-      const rootBottom = (assignedY[id] || globalY) + nodeH(el);
-      globalY = Math.max(rootBottom + ROOT_GAP, (colCursor[colOf[id]] || globalY) + ROOT_GAP - PAD_Y);
-    });
-
-    // Measure actual vertical extent to solve column width
-    const placed2 = nodeEls.filter(el => assignedY[nid(el)] !== undefined);
-    const minY  = Math.min(...placed2.map(el => assignedY[nid(el)]));
-    const maxYB = Math.max(...placed2.map(el => assignedY[nid(el)] + nodeH(el)));
-    const totalH = maxYB - minY;
-
-    const MIN_COL_W = NODE_W_EST * 1.4;
-    let colW;
-    if (maxCol === 0) {
-      colW = MIN_COL_W;
-    } else {
-      const rawColW = (totalH           - NODE_W_EST - 2 * MARGIN) / maxCol;
-      const minColW = Math.max(MIN_COL_W, (totalH * 0.8 - NODE_W_EST - 2 * MARGIN) / maxCol);
-      const maxColW =                      (totalH * 1.2 - NODE_W_EST - 2 * MARGIN) / maxCol;
-      colW = Math.max(minColW, Math.min(maxColW, rawColW));
-      colW = Math.max(colW, MIN_COL_W);
-    }
-
-    // Apply final positions (roots rightmost, deepest components leftmost)
-    nodeEls.forEach(el => {
-      const id = nid(el);
-      el.style.left = `${(maxCol - (colOf[id] || 0)) * colW + MARGIN}px`;
-      el.style.top  = `${assignedY[id] !== undefined ? assignedY[id] : MARGIN}px`;
-    });
-  }
+  apiImportBtn.addEventListener('click', runSosImport);
 
   /* ── Drag with click-vs-drag detection ── */
   const DRAG_THRESHOLD = 4;
