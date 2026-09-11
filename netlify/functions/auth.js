@@ -77,7 +77,15 @@ async function openStore(event) {
   if (typeof blobs.connectLambda === 'function') {
     try { blobs.connectLambda(event); } catch (_) { /* already configured */ }
   }
-  return blobs.getStore(STORE_NAME);
+  // Strong consistency: without it, a read right after a write (create a
+  // company, then immediately re-list / reload) can return the pre-write
+  // snapshot for up to a minute — deleted companies reappear, new ones
+  // vanish. This store is tiny, so the extra read latency is a non-issue.
+  try {
+    return blobs.getStore({ name: STORE_NAME, consistency: 'strong' });
+  } catch (_) {
+    return blobs.getStore(STORE_NAME);
+  }
 }
 async function loadUsers(store) {
   const data = await store.get(USERS_KEY, { type: 'json' }) || {};
