@@ -4140,7 +4140,18 @@
   // same column shape), with catEdits as the single edit layer over CATALOG.
   let _catRows = [];  // CATALOG + CUSTOM, in the order data-idx points into
   const catCustomRows = () => (typeof CUSTOM !== 'undefined' ? CUSTOM : []);
-  function catAllRows() { return CATALOG.concat(catCustomRows()); }
+  // The baked CATALOG is the first company's ("default") starter data. Any
+  // other company starts with an empty catalog and builds its own from canvas
+  // components + SOS imports. Outside getbomflow.com (__bfCompany undefined)
+  // the catalog always loads.
+  function catBakedRows() {
+    try {
+      var c = window.__bfCompany;
+      if (c && c.id && c.id !== 'default') return [];
+    } catch (e) {}
+    return CATALOG;
+  }
+  function catAllRows() { return catBakedRows().concat(catCustomRows()); }
 
   const catRowId = (baseRow) => String(baseRow.ItemId || baseRow.Name || '');
   // A row as it should appear. CUSTOM rows are user data — edited in place, no
@@ -7228,19 +7239,30 @@
   // Each company gets its own slice of localStorage. The first ("default")
   // company keeps the plain keys so existing data is untouched; others get a
   // "co:<id>:" prefix on the app's canvas-* and sos-access-token keys.
+  // We patch BOTH Storage.prototype (honoured by Safari/Firefox) and the
+  // localStorage instance (honoured by Chrome) so the redirect can't be
+  // silently ignored — if that happened, companies would share one dataset.
+  var _scopeInstalled = false;
   function installCompanyScope() {
-    if (activeCo === 'default') return;
+    if (_scopeInstalled || activeCo === 'default') return;
+    _scopeInstalled = true;
     var pfx = 'co:' + activeCo + ':';
-    var S = window.localStorage;
-    var g = S.getItem.bind(S), s = S.setItem.bind(S), rm = S.removeItem.bind(S);
     var scope = function (k) {
       return /^(canvas-|sos-access-token)/.test(String(k)) ? pfx + k : k;
     };
+    var P = Storage.prototype;
+    var pg = P.getItem, ps = P.setItem, prm = P.removeItem;
     try {
-      S.getItem = function (k) { return g(scope(k)); };
-      S.setItem = function (k, v) { return s(scope(k), v); };
-      S.removeItem = function (k) { return rm(scope(k)); };
-    } catch (e) { /* locked in some browsers — companies share storage there */ }
+      P.getItem = function (k) { return pg.call(this, scope(k)); };
+      P.setItem = function (k, v) { return ps.call(this, scope(k), v); };
+      P.removeItem = function (k) { return prm.call(this, scope(k)); };
+    } catch (e) { /* ignore */ }
+    var S = window.localStorage;
+    try {
+      S.getItem = function (k) { return pg.call(S, scope(k)); };
+      S.setItem = function (k, v) { return ps.call(S, scope(k), v); };
+      S.removeItem = function (k) { return prm.call(S, scope(k)); };
+    } catch (e) { /* ignore */ }
   }
 
   function resolveActiveCompany(list) {
@@ -7473,18 +7495,27 @@
   coModal.addEventListener('click', function (e) { if (e.target === coModal) closeCompanies(); });
 
   function applyCompanies(list) {
-    companies = list || companies;
-    buildAcctMenu();
-    renderCompanies();
+    if (Array.isArray(list)) companies = list;
+    if (window.__bfCompany) window.__bfCompany.name = activeCompanyName();
+    try { buildAcctMenu(); } catch (e) {}
+    paintCompanyRows();
   }
 
   function renderCompanies() {
-    coList.innerHTML = '<div style="font-size:12px;color:#767676">Loading…</div>';
+    // show what we already know right away, then refresh from the server
+    if (companies.length) paintCompanyRows();
+    else coList.innerHTML = '<div style="font-size:12px;color:#767676">Loading…</div>';
     api('listCompanies').then(function (data) {
-      var list = (data.companies || []).slice().sort(function (a, b) { return a.name.localeCompare(b.name); });
-      companies = data.companies || companies;
-      coList.innerHTML = '';
-      list.forEach(function (c) {
+      if (Array.isArray(data.companies)) companies = data.companies;
+      paintCompanyRows();
+    }).catch(function (err) { coSay(err.message); });
+  }
+
+  function paintCompanyRows() {
+    if (!coList) return;
+    var list = companies.slice().sort(function (a, b) { return a.name.localeCompare(b.name); });
+    coList.innerHTML = '';
+    list.forEach(function (c) {
         var row = document.createElement('div');
         row.className = 'bf-u-row';
 
@@ -7528,8 +7559,7 @@
         row.appendChild(rename);
         row.appendChild(del);
         coList.appendChild(row);
-      });
-    }).catch(function (err) { coList.innerHTML = ''; coSay(err.message); });
+    });
   }
 
   coAdd.addEventListener('submit', function (e) {
