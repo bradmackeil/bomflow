@@ -7274,8 +7274,28 @@
     } catch (e) { /* ignore */ }
   }
 
+  // The auth store is eventually consistent (~60s), so a company list read
+  // right after we changed it can be stale — a just-created company missing,
+  // a just-deleted one back. We stash the list we get from our own successful
+  // writes and prefer it over server reads for a short window.
+  var CO_CACHE_KEY = 'bf-companies-cache';
+  var CO_CACHE_TTL = 120000;
+  function cacheCompanies(list) {
+    if (!Array.isArray(list)) return;
+    try { localStorage.setItem(CO_CACHE_KEY, JSON.stringify({ list: list, ts: Date.now() })); } catch (e) {}
+  }
+  function reconcileCompanies(serverList) {
+    var cached = null;
+    try { cached = JSON.parse(localStorage.getItem(CO_CACHE_KEY) || 'null'); } catch (e) {}
+    if (cached && Array.isArray(cached.list) && (Date.now() - cached.ts) < CO_CACHE_TTL) {
+      return cached.list;
+    }
+    if (cached) { try { localStorage.removeItem(CO_CACHE_KEY); } catch (e) {} }
+    return Array.isArray(serverList) ? serverList : (cached && cached.list) || [];
+  }
+
   function resolveActiveCompany(list) {
-    companies = Array.isArray(list) ? list : [];
+    companies = reconcileCompanies(list);
     var want = localStorage.getItem(COMPANY_KEY) || 'default';
     var found = companies.filter(function (c) { return c.id === want; })[0];
     if (!found) {
@@ -7352,6 +7372,7 @@
 
   function signOut() {
     localStorage.removeItem(TOKEN_KEY);
+    try { localStorage.removeItem(CO_CACHE_KEY); } catch (e) {}
     token = null; me = null;
     location.reload();
   }
@@ -7517,7 +7538,7 @@
   coModal.addEventListener('click', function (e) { if (e.target === coModal) closeCompanies(); });
 
   function applyCompanies(list) {
-    if (Array.isArray(list)) companies = list;
+    if (Array.isArray(list)) { companies = list; cacheCompanies(list); }
     if (window.__bfCompany) window.__bfCompany.name = activeCompanyName();
     try { buildAcctMenu(); } catch (e) {}
     paintActiveCompany();
@@ -7529,7 +7550,7 @@
     if (companies.length) paintCompanyRows();
     else coList.innerHTML = '<div style="font-size:12px;color:#767676">Loading…</div>';
     api('listCompanies').then(function (data) {
-      if (Array.isArray(data.companies)) companies = data.companies;
+      companies = reconcileCompanies(data.companies);
       paintActiveCompany();
       paintCompanyRows();
     }).catch(function (err) { coSay(err.message); });
@@ -7572,6 +7593,7 @@
           if (!window.confirm('Delete "' + c.name + '"? Its items and BOMs on this device are not erased, but it is removed from the list.')) return;
           api('deleteCompany', { id: c.id })
             .then(function (d) {
+              cacheCompanies(d.companies);
               if (c.id === activeCo) { switchCompany((d.companies[0] || {}).id || 'default'); return; }
               applyCompanies(d.companies); coSay('Deleted.', true);
             })
